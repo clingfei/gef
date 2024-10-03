@@ -2,6 +2,7 @@
 
 ## Table of Contents
 * [About GEF's file or directory](#about-gefs-file-or-directory)
+* [About the install](#about-the-install)
 * [About the host environment](#about-the-host-environment)
 * [About the guest (debugged) environment](#about-the-guest-debugged-environment)
 * [About GEF settings](#about-gef-settings)
@@ -18,17 +19,12 @@
 ## Where is `gef.py`?
 GEF (`gef.py`) is placed in `/root/.gdbinit-gef.py` by default. GEF is one file.
 
-## How to change the location of GEF?
-Move `/root/.gdbinit-gef.py` and edit `/root/.gdbinit`.
-
-If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-gef.py` to that user's `$HOME/.gdbinit`.
-
 ## What is `~/.gef.rc`?
 This is the GEF config file. Not present by default.
 
 Executing the `gef save` command saves the current settings to disk (`~/.gef.rc`).
 The next time GEF starts, it will be automatically loaded and the settings will be reflected.
-This includes the current values of items configurable with `gef config` and alias settings for commands.
+This includes the current values of items configurable with `gef config` and user alias settings for commands.
 
 ## What is `/tmp/gef`?
 This is the directory where GEF temporarily stores files.
@@ -43,13 +39,65 @@ This is an installer for running GEF in limited environments where required pack
 * If you do not need some features (used in a limited environment), use `install-minimal.sh`. It should work at least except some commands.
 
 
+# About the install
+
+## How to change the location of GEF?
+Move `/root/.gdbinit-gef.py` and edit `/root/.gdbinit`.
+
+If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-gef.py` to that user's `$HOME/.gdbinit`.
+
+## I don't want to specify the `--break-system-packages` option during installation.
+You have some options:
+* Install inside docker to prevent impact on the host environment.
+* Use `install-minimal.sh` to skip installing with `pip`.
+* Use `venv` or `pyenv` to manage Python modules individually.
+
+## How can I install GEF offline?
+Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
+
+Note: GEF is designed to have as few dependencies as possible.
+Many commands should work with just `gef.py` without any additional external tools.
+If you do not install external tools, the features that are not available are listed below.
+
+## If I do not install external tools, which commands will no longer be available?
+Following are the breakdown. It may not be comprehensive.
+
+If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
+
+|GEF command/feature|required apt package|required python3 package|required other tools|
+|:---|:---|:---|:---|
+|(`gef`)|`gdb` or `gdb-multiarch`|-|-|
+|`got`|`binutils` (`objdump`, `readelf`)|-|-|
+|`rp --kernel`|`binutils` (`nm`)|-|-|
+|`qemu-device-info`|`binutils` (`nm`)|-|-|
+|`add-symbol-temporary`|`binutils` (`objcopy`)|-|-|
+|`ksymaddr-remote-apply`|`binutils` (`objcopy`)|-|-|
+|`diffo git-diff`|`git`|-|-|
+|`vmlinux-to-elf-apply`|`python3-pip`, `git`|`vmlinux-to-elf`|-|
+|`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|
+|`hash-memory -v`|`python3-pip`|`crccheck`|-|
+|`unicorn-emulate`|`python3-pip`|`unicorn`, `capstone`|-|
+|`capstone-disassemble`|`python3-pip`|`capstone`|-|
+|`dasm`|`python3-pip`|`capstone`|-|
+|`asm-list`|`python3-pip`|`capstone`|-|
+|`i8086` mode|`python3-pip`|`capstone`|-|
+|`ropper`|`python3-pip`|`ropper`|-|
+|`mprotect`|`python3-pip`|`keystone-engine`|-|
+|`asm`|`python3-pip`|`keystone-engine`|-|
+|(Progress Indicator)|`python3-pip`|`tqdm`|-|
+|`onegadget`|`ruby-dev`|-|`one_gadget`|
+|`seccomp-tools`|`ruby-dev`|-|`seccomp-tools`|
+|`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
+|`rp`|-|-|`rp++`|
+
+
 # About the host environment
 
 ## Does GEF work properly on OS other than Ubuntu?
 Yes, it probably works fine for regular Linux.
 
-I have used it on debian. Also it seems to be working fine on WSL2 (ubuntu) so far.
-Some users are running it on Arch Linux.
+I have used it on debian. Some users are running it on Arch Linux.
+Also it seems to be working fine on WSL2 (ubuntu) so far.
 However, I have not confirmed that all commands work correctly.
 
 ## Will this GEF work as a plugin for `hugsy/gef`?
@@ -78,36 +126,6 @@ Consider building gdb from latest tarball or git.
     make && make install
     ```
 
-## If I use `install-minimal.sh`, which commands will no longer be available?
-Following are the breakdown. It may not be comprehensive.
-
-If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
-
-* `apt` packages
-    * `gdb-multiarch`: `gdb` is also good, but of course one is required.
-    * `binutils`: is required by following commands.
-        * `objdump` and `readelf`: are required by `got` command.
-        * `nm`: is required by `rp --kernel` and `qemu-device-info` commands.
-        * `objcopy`: is required by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
-    * `python3-pip`: is required to install `vmlinux-to-elf` and some python3 packages.
-    * `git`: is required to install `vmlinux-to-elf` and required by `diffo git-diff` command.
-    * `ruby-dev`: is required to install `one_gadget` and `seccomp-tools`.
-* `python3` packages
-    * `crccheck`: is required by `uefi-ovmf-info` and `hash-memory -v` commands.
-    * `unicorn`: is required by `unicorn-emulate` command.
-    * `capstone`: is required by `i8086` mode and required by `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands.
-    * `ropper`: is required by `ropper` command.
-    * `keystone-engine`: is required by `mprotect` and `asm` commands.
-    * `tqdm`: just makes it look better, so GEF will work without it.
-* Others
-  * `vmlinux-to-elf`: is required by `vmlinux-to-elf-apply` command.
-  * `rp++`: is required by `rp` command.
-  * `seccomp-tools`: is required by `seccomp-tools` command.
-  * `one_gadget`: is required by `onegadget` command.
-
-## How can I install GEF offline?
-Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
-
 ## When debugging with gdb, how can I display the source code of preinstalled libraries and commands?
 Although it is limited to Ubuntu 22.10 or later, it is recommended to use `debuginfod`.
 
@@ -119,10 +137,12 @@ However, for some reason `debuginfod` does not display the `glibc` source code, 
 I don't really understand the reason for this.
 
 * Get `glibc` source
-    * `sed -i -e "s/^# deb-src/deb-src/g" /etc/apt/sources.list`
-        * This is invalid on ubuntu 24.04. See [here](https://askubuntu.com/questions/1512042/).
+    * Ubuntu 24.04 or later
+        * `sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources`
+    * Ubuntu 23.10 or before
+        * `sed -i -e 's/^# deb-src/deb-src/g' /etc/apt/sources.list`
     * `cd /usr/lib/debug && apt update && apt source libc6`
-    * `echo "directory /usr/lib/debug/glibc-2.38" >> ~/.gdbinit`
+    * `echo "directory /usr/lib/debug/glibc-2.39" >> ~/.gdbinit`
         * Need to fix version for your environment.
 
 * Also add `glibc` symbols
@@ -133,7 +153,7 @@ I don't really understand the reason for this.
 # About the guest (debugged) environment
 
 ## What Linux kernel versions does GEF support as guests in qemu-system?
-I have confirmed that most commands work on versions 3.x ~ 6.9.x.
+I have confirmed that most commands work on versions 3.x ~ 6.11.x.
 
 However, I have not verified every kernel version.
 For example, certain symbols in some versions may not be supported by heuristic symbol detection.
@@ -267,6 +287,11 @@ Please update `vmlinux-to-elf` to the latest version.
 If the problem persists, try using the `ks-apply` command. The logic is different a little, so it might work.
 If it still doesn't work, please report it on the issue page.
 
+## If I have `vmlinux` with debuginfo, how can I use `ks-apply`?
+Run `add-symbol-file <vmlinux_path> <kernel_base>`.
+
+No need to use `ks-apply` and `vmlinux-to-elf-apply`, because `vmlinux` with debuginfo provides more information.
+
 ## `got` command does not display PLT address well.
 This problem is probably caused by an outdated version of `binutils`.
 
@@ -356,7 +381,7 @@ There are also similar functions. Here are the list.
     * `write_memory(addr, data)`, `read_memory(addr, length)`
     * `is_valid_addr(addr)`
     * `read_int_from_memory(addr)`
-    * `read_cstring_from_memory(addr, max_length=None, ascii_only=True)`
+    * `read_cstring_from_memory(addr, max_length=None)`
     * `read_physmem(paddr, size)`, `write_physmem(paddr, data)`
 * Register access
     * `get_register(regname, use_mbed_exec=False, use_monitor=False)`

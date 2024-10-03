@@ -35,7 +35,7 @@
 # To start: in gdb, type `source /path/to/gef.py`
 #
 #######################################################################################
-# gef is distributed under the MIT License (MIT)
+# GEF is distributed under the MIT License.
 #
 # Copyright (c) 2021-2024 bata24 (@bata_24)
 #
@@ -64,25 +64,27 @@
 # SOFTWARE.
 #
 #######################################################################################
-# Use this command when check by vulture
+# Use this command when check by `vulture`.
 # vulture gef.py --ignore-names="*Command"
 #
 #######################################################################################
-# Use this command when check by ruff
-# ruff check gef.py --select B,C4,E,F --ignore C409,E402,E501,E731
+# Use this command when check by `ruff`.
+# ruff check gef.py --select B,C4,E,F --ignore E402,E501,E731
 #
-# C409: Unnecessary `list` literal passed to `tuple()`
-#   -> If the argument type is str or int, it must be list before.
 # E402: module level import not at top of file
-#   -> For faster startup speed, debug modules are loaded when needed.
+#   -> For faster startup, less frequently used modules should be loaded on demand.
 # E501: line too long (> 79 characters)
-#   -> I consider this rule to be nonsense in modern environment.
+#   -> I think this rule is nonsense in the modern environment.
 # E731: do not assign a lambda expression, use a def
 #   -> It can be written more cleanly using lambdas.
 #
 #######################################################################################
-# Use this command when check by codespell
+# Use this command when check by `codespell`.
 # codespell gef.py
+#
+#######################################################################################
+# Use this command to measure the time it takes GEF to load modules at startup.
+# PYTHONPROFILEIMPORTTIME=1 gdb
 #
 
 
@@ -183,6 +185,7 @@ HORIZONTAL_LINE             = "-"
 VERTICAL_LINE               = "|"
 BP_GLYPH                    = "*"
 
+
 def perf(f): # noqa
     """Decorator wrapper to perf."""
 
@@ -227,16 +230,19 @@ def cperf(f): # noqa
 
 
 class DisplayHook:
+    """It enables pretty printing of list, dict, set, and so on.
+    It also displays in hexadecimal by default."""
+
     @staticmethod
     def pp(o, idt):
         """Makes a string for pretty print by recursively."""
 
         def I1(idt):
-            """Adds an indent for current level."""
+            """Makes an indent for current level."""
             return "  " * idt
 
         def I2(idt):
-            """Adds an indent for next level."""
+            """Makes an indent for next level."""
             return "  " * (idt + 1)
 
         def R1(o, idt):
@@ -247,15 +253,9 @@ class DisplayHook:
             """Returns a list of the elements with indent and comma (for list, tuple, set, ...)."""
             return [I2(idt) + DisplayHook.pp(x, idt + 1) + "," for x in o]
 
-        def RD1(o, idt):
-            """Returns a string of the elements concatenated with comma (for dict, ...)."""
-            return ", ".join([DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) for k, v in o])
-
-        def RD2(o, idt):
-            """Returns a list of the elements with indent and comma (for dict, ...)."""
-            return [I2(idt) + DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) + "," for k, v in o]
-
         def Z(s, e, o, idt):
+            """Returns a string of the elements concatenated with commas (for list, tuple, set, ...),
+            taking into account the width of the screen."""
             # Creates a string without newlines and returns it if it's short enough.
             f = s + R1(o, idt) + e
             if len(f) < width:
@@ -264,7 +264,17 @@ class DisplayHook:
             f = [s] + R2(o, idt) + [I1(idt) + e]
             return "\n".join(f)
 
+        def RD1(o, idt):
+            """Returns a string of the elements concatenated with comma (for dict, ...)."""
+            return ", ".join([DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) for k, v in o])
+
+        def RD2(o, idt):
+            """Returns a list of the elements with indent and comma (for dict, ...)."""
+            return [I2(idt) + DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) + "," for k, v in o]
+
         def ZD(s, e, o, idt):
+            """Returns a string of the elements concatenated with comma (for dict, ...),
+            taking into account the width of the screen."""
             # Creates a string without newlines and returns it if it's short enough.
             f = s + RD1(o, idt) + e
             if len(f) < width:
@@ -322,6 +332,7 @@ class DisplayHook:
 
     @staticmethod
     def displayhook(o): # noqa
+        """An alternative to the default display function."""
         __builtins__._ = o # noqa
 
         if o is None:
@@ -333,16 +344,23 @@ class DisplayHook:
 
 
 def hexon(): # noqa
+    """Replaces the print function that is implicitly called when running "python-interactive 1" etc."""
     sys.displayhook = DisplayHook.displayhook # noqa
     return
 
 
 def hexoff(): # noqa
+    """Reverts the print function that is implicitly called when running "python-interactive 1" etc."""
     sys.displayhook = sys.__displayhook__ # noqa
     return
 
 
 class Cache:
+    """Manages the gef cache. The cache has 2 types: "until_next" and "this_session".
+    "until_next": Cached for a very short period of time. Cleared every time an instruction is stepped, etc.
+    "this_session": Cached until gdb exits.
+    Note: each command may have its own cache without using this mechanism. Not all caches are centralized here."""
+
     __gef_caches__ = {
         "until_next": {},
         "this_session": {},
@@ -397,6 +415,9 @@ class Cache:
 
     @staticmethod
     def reset_gef_caches(function=None, all=False):
+        """Clears the cache of GEF.
+        By default, it only clears caches of `until_next` type."""
+
         if function:
             for v in Cache.__gef_caches__.values():
                 try:
@@ -418,7 +439,11 @@ class Cache:
 
 
 class Config:
+    """Manages gef configurations. Most configs are tied to specific commands.
+    They are defined in the form `command_name.config_name`."""
+
     __gef_config__ = {} # keep gef configs
+    __gef_config_orig__ = {} # for debugging
 
     @staticmethod
     @Cache.cache_until_next
@@ -466,7 +491,7 @@ def gef_print(x="", less=False, *args, **kwargs):
             return
         tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
         os.fdopen(tmp_fd, "wb").write(String.str2bytes(x))
-        os.system("{:s} -Rf {:s}".format(less, tmp_path))
+        os.system("{!r} -Rf {!r}".format(less, tmp_path))
 
         keep_pager_result = Config.get_gef_setting("gef.keep_pager_result")
         if keep_pager_result:
@@ -1003,6 +1028,7 @@ class Color:
 
 class Address:
     """GEF representation of memory addresses."""
+
     def __init__(self, *args, **kwargs):
         self.value = kwargs.get("value", 0)
         self.section = kwargs.get("section", None)
@@ -1115,9 +1141,12 @@ class Address:
 
 
 class AddressUtil:
+    """A collection of utility functions that operate on addresses."""
+
     @staticmethod
     @Cache.cache_this_session
     def ptr_width():
+        """Determines whether the environment is 32-bit or 64-bit and returns the result."""
         void = GefUtil.cached_lookup_type("void")
         if void is None:
             uintptr_t = GefUtil.cached_lookup_type("uintptr_t")
@@ -1164,6 +1193,7 @@ class AddressUtil:
 
     @staticmethod
     def get_format_address_width(memalign_size=None):
+        """Returns the display width."""
         if not is_alive():
             return 18
         if is_32bit() or memalign_size == 4:
@@ -1292,13 +1322,13 @@ class AddressUtil:
     @staticmethod
     @Cache.cache_this_session
     def get_recursive_dereference_blacklist():
+        """Returns the blacklist of addresses. This is a function for caching purposes."""
         return eval(Config.get_gef_setting("dereference.blacklist")) or []
 
     @staticmethod
     @Cache.cache_until_next
     def recursive_dereference(addr, phys=False):
         """Create dereference array."""
-
         if not is_alive():
             return [addr], None
 
@@ -1347,7 +1377,7 @@ class AddressUtil:
     @staticmethod
     @Cache.cache_until_next
     def recursive_dereference_to_string(value, skip_idx=0, phys=False):
-        """Create string from dereference array"""
+        """Create string from dereference array."""
         string_color = Config.get_gef_setting("theme.dereference_string")
         nb_max_string_length = Config.get_gef_setting("context.nb_max_string_length")
         recursion = Config.get_gef_setting("dereference.max_recursion") or 4
@@ -1420,6 +1450,7 @@ class AddressUtil:
 
 class Permission:
     """GEF representation of Linux permission."""
+
     NONE    = 0
     READ    = 1
     WRITE   = 2
@@ -1471,6 +1502,7 @@ class Permission:
 
 class Section:
     """GEF representation of process memory sections."""
+
     def __init__(self, *args, **kwargs):
         self.page_start = kwargs.get("page_start")
         self.page_end = kwargs.get("page_end")
@@ -1507,6 +1539,7 @@ class Section:
 
 class Elf:
     """Basic ELF parsing."""
+
     # e_ident[EI_MAG0:EI_MAG3]
     ELF_MAGIC                = 0x7f454c46
 
@@ -1711,7 +1744,7 @@ class Elf:
     EM_CLOUDSHIELD           = 192 # CloudShield architecture family
     EM_COREA_1ST             = 193 # KIPO-KAIST Core-A 1st generation processor family
     EM_COREA_2ND             = 194 # KIPO-KAIST Core-A 2nd generation processor family
-    EM_ARCV2                 = 195 # Synopsys ARCompact V2
+    EM_ARCV2                 = 195 # Synopsys ARCompact V2 # codespell:ignore
     EM_OPEN8                 = 196 # Open8 8-bit RISC soft processor core
     EM_RL78                  = 197 # Renesas RL78 family
     EM_VIDEOCORE5            = 198 # Broadcom VideoCore V processor
@@ -1752,9 +1785,9 @@ class Elf:
     EM_NFP                   = 250 # Netronome Flow Processor
     EM_VE                    = 251 # NEC Vector Engine
     EM_CSKY                  = 252 # C-SKY processor family
-    EM_ARC_COMPACT3_64       = 253 # Synopsys ARCv2.3 64-bit
+    EM_ARC_COMPACT3_64       = 253 # Synopsys ARCv2.3 64-bit # codespell:ignore
     EM_MCS6502               = 254 # MOS Technology MCS 6502 processor
-    EM_ARC_COMPACT3          = 255 # Synopsys ARCv2.3 32-bit
+    EM_ARC_COMPACT3          = 255 # Synopsys ARCv2.3 32-bit # codespell:ignore
     EM_KVX                   = 256 # Kalray VLIW core of the MPPA processor family
     EM_65816                 = 257 # WDC 65816/65C816
     EM_LOONGARCH             = 258 # LoongArch
@@ -2277,72 +2310,93 @@ class Elf:
 
     class Phdr:
         # p_type
-        PT_NULL          = 0
-        PT_LOAD          = 1
-        PT_DYNAMIC       = 2
-        PT_INTERP        = 3
-        PT_NOTE          = 4
-        PT_SHLIB         = 5
-        PT_PHDR          = 6
-        PT_TLS           = 7
-        #PT_LOOS          = 0x60000000
-        PT_GNU_EH_FRAME  = 0x6474e550
-        PT_GNU_STACK     = 0x6474e551
-        PT_GNU_RELRO     = 0x6474e552
-        PT_GNU_PROPERTY  = 0x6474e553
-        #PT_LOSUNW        = 0x6ffffffa
-        PT_SUNWBSS       = 0x6ffffffa
-        PT_SUNWSTACK     = 0x6ffffffb
-        #PT_HISUNW        = 0x6fffffff
-        #PT_HIOS          = 0x6fffffff
-        #PT_LOPROC        = 0x70000000
-        #PT_HIPROC        = 0x7fffffff
-        # arch specific values
-        PT_MIPS_REGINFO  = 0x70000000
-        PT_MIPS_RTPROC   = 0x70000001
-        PT_MIPS_OPTIONS  = 0x70000002
-        PT_MIPS_ABIFLAGS = 0x70000003
-        PT_IA_64_UNWIND  = 0x70000001 # noqa: F841
-        PT_HP_TLS        = 0x60000000 # noqa: F841
-        PT_HP_CORE_NONE  = 0x60000001 # noqa: F841
-        PT_HP_CORE_VERSION = 0x60000002 # noqa: F841
-        PT_HP_CORE_KERNEL = 0x60000003 # noqa: F841
-        PT_HP_CORE_COMM  = 0x60000004 # noqa: F841
-        PT_HP_CORE_PROC  = 0x60000005 # noqa: F841
-        PT_HP_CORE_LOADABLE = 0x60000006 # noqa: F841
-        PT_HP_CORE_STACK = 0x60000007 # noqa: F841
-        PT_HP_CORE_SHM   = 0x60000008 # noqa: F841
-        PT_HP_CORE_MMF   = 0x60000009 # noqa: F841
-        PT_HP_PARALLEL   = 0x6000000a # noqa: F841
-        PT_HP_FASTBIND   = 0x6000000b # noqa: F841
-        PT_HP_OPT_ANNOT  = 0x6000000c # noqa: F841
-        PT_HP_HSL_ANNOT  = 0x6000000d # noqa: F841
-        PT_HP_STACK      = 0x6000000ea # noqa: F841
-        PT_PARISC_ARCHEXT = 0x70000000 # noqa: F841
-        PT_PARISC_UNWIND = 0x70000001 # noqa: F841
+        PT_NULL               = 0
+        PT_LOAD               = 1
+        PT_DYNAMIC            = 2
+        PT_INTERP             = 3
+        PT_NOTE               = 4
+        PT_SHLIB              = 5
+        PT_PHDR               = 6
+        PT_TLS                = 7
+        #PT_LOOS              = 0x60000000
+        PT_GNU_EH_FRAME       = 0x6474e550
+        PT_GNU_STACK          = 0x6474e551
+        PT_GNU_RELRO          = 0x6474e552
+        PT_GNU_PROPERTY       = 0x6474e553
+        PT_GNU_SFRAME         = 0x6474e554
+        #PT_GNU_MBIND_LO      = 0x6474e555
+        #PT_GNU_MBIND_HI      = 0x6474f554
+        #PT_LOSUNW            = 0x6ffffffa
+        PT_SUNWBSS            = 0x6ffffffa
+        PT_SUNWSTACK          = 0x6ffffffb
+        #PT_HISUNW            = 0x6fffffff
+        #PT_HIOS              = 0x6fffffff
+        #PT_LOPROC            = 0x70000000
+        #PT_HIPROC            = 0x7fffffff
+        PT_AARCH64_ARCHEXT    = 0x70000000 # noqa: F841
+        PT_AARCH64_MEMTAG_MTE = 0x70000002 # noqa: F841
+        PT_ARM_ARCHEXT        = 0x70000000 # noqa: F841
+        PT_ARM_EXIDX          = 0x70000001 # noqa: F841
+        PT_HP_TLS             = 0x60000000 # noqa: F841
+        PT_HP_CORE_NONE       = 0x60000001 # noqa: F841
+        PT_HP_CORE_VERSION    = 0x60000002 # noqa: F841
+        PT_HP_CORE_KERNEL     = 0x60000003 # noqa: F841
+        PT_HP_CORE_COMM       = 0x60000004 # noqa: F841
+        PT_HP_CORE_PROC       = 0x60000005 # noqa: F841
+        PT_HP_CORE_LOADABLE   = 0x60000006 # noqa: F841
+        PT_HP_CORE_STACK      = 0x60000007 # noqa: F841
+        PT_HP_CORE_SHM        = 0x60000008 # noqa: F841
+        PT_HP_CORE_MMF        = 0x60000009 # noqa: F841
+        PT_HP_PARALLEL        = 0x60000010 # noqa: F841
+        PT_HP_FASTBIND        = 0x60000011 # noqa: F841
+        PT_HP_OPT_ANNOT       = 0x60000012 # noqa: F841
+        PT_HP_HSL_ANNOT       = 0x60000013 # noqa: F841
+        PT_HP_STACK           = 0x60000014 # noqa: F841
+        PT_HP_CORE_UTSNAME    = 0x60000015 # noqa: F841
+        PT_IA_64_HP_OPT_ANOT  = 0x60000012 # noqa: F841
+        PT_IA_64_HP_HSL_ANOT  = 0x60000013 # noqa: F841
+        PT_IA_64_HP_STACK     = 0x60000014 # noqa: F841
+        PT_IA_64_ARCHEXT      = 0x70000000 # noqa: F841
+        PT_IA_64_UNWIND       = 0x70000001 # noqa: F841
+        PT_MIPS_REGINFO       = 0x70000000 # noqa: F841
+        PT_MIPS_RTPROC        = 0x70000001 # noqa: F841
+        PT_MIPS_OPTIONS       = 0x70000002 # noqa: F841
+        PT_MIPS_ABIFLAGS      = 0x70000003 # noqa: F841
+        PT_PARISC_ARCHEXT     = 0x70000000 # noqa: F841
+        PT_PARISC_UNWIND      = 0x70000001 # noqa: F841
+        PT_PARISC_WEAKORDER   = 0x70000002 # noqa: F841
+        PT_RISCV_ATTRIBUTES   = 0x70000003 # noqa: F841
+        PT_S390_PGSTE         = 0x70000000 # noqa: F841
 
         # p_flags
-        PF_X             = 1
-        PF_W             = 2
-        PF_R             = 4
-        # arch specific values
-        PF_HP_PAGE_SIZE  = 0x00100000 # noqa: F841
-        PF_HP_FAR_SHARED = 0x00200000 # noqa: F841
-        PF_HP_NEAR_SHARED = 0x00400000 # noqa: F841
-        PF_HP_CODE       = 0x01000000 # noqa: F841
-        PF_HP_MODIFY     = 0x02000000 # noqa: F841
-        PF_HP_LAZYSWAP   = 0x04000000 # noqa: F841
-        PF_HP_SBP        = 0x08000000 # noqa: F841
-        PF_PARISC_SBP    = 0x08000000 # noqa: F841
+        PF_X                = 1
+        PF_W                = 2
+        PF_R                = 4
+        PF_ARM_SB           = 0x10000000 # noqa: F841
+        PF_ARM_PI           = 0x20000000 # noqa: F841
+        PF_ARM_ABS          = 0x40000000 # noqa: F841
+        PF_HP_CODE          = 0x00040000 # noqa: F841
+        PF_HP_MODIFY        = 0x00080000 # noqa: F841
+        PF_HP_PAGE_SIZE     = 0x00100000 # noqa: F841
+        PF_HP_FAR_SHARED    = 0x00200000 # noqa: F841
+        PF_HP_NEAR_SHARED   = 0x00400000 # noqa: F841
+        PF_HP_LAZYSWAP      = 0x00800000 # noqa: F841
+        PF_HP_CODE_DEPR     = 0x01000000 # noqa: F841
+        PF_HP_MODIFY_DEPR   = 0x02000000 # noqa: F841
+        PF_HP_LAZYSWAP_DEPR = 0x04000000 # noqa: F841
+        PF_HP_SBP           = 0x08000000 # noqa: F841
+        PF_IA_64_NORECOV    = 0x80000000 # noqa: F841
+        PF_OVERRAY          = 0x08000000 # noqa: F841
+        PF_PARISC_SBP       = 0x08000000 # noqa: F841
 
-        p_type           = None
-        p_flags          = None
-        p_offset         = None
-        p_vaddr          = None
-        p_paddr          = None
-        p_filesz         = None
-        p_memsz          = None
-        p_align          = None
+        p_type   = None
+        p_flags  = None
+        p_offset = None
+        p_vaddr  = None
+        p_paddr  = None
+        p_filesz = None
+        p_memsz  = None
+        p_align  = None
 
         def __init__(self, elf, off):
             if elf is None:
@@ -2371,84 +2425,160 @@ class Elf:
 
     class Shdr:
         # sh_type
-        SHT_NULL             = 0
-        SHT_PROGBITS         = 1
-        SHT_SYMTAB           = 2
-        SHT_STRTAB           = 3
-        SHT_RELA             = 4
-        SHT_HASH             = 5
-        SHT_DYNAMIC          = 6
-        SHT_NOTE             = 7
-        SHT_NOBITS           = 8
-        SHT_REL              = 9
-        SHT_SHLIB            = 10
-        SHT_DYNSYM           = 11
-        SHT_INIT_ARRAY       = 14
-        SHT_FINI_ARRAY       = 15
-        SHT_PREINIT_ARRAY    = 16
-        SHT_GROUP            = 17
-        SHT_SYMTAB_SHNDX     = 18
-        SHT_RELR             = 19
-        #SHT_LOOS             = 0x60000000
-        SHT_GNU_ATTRIBUTES   = 0x6ffffff5
-        SHT_GNU_HASH         = 0x6ffffff6
-        SHT_GNU_LIBLIST      = 0x6ffffff7
-        SHT_CHECKSUM         = 0x6ffffff8
-        #SHT_LOSUNW           = 0x6ffffffa
-        SHT_SUNW_move        = 0x6ffffffa
-        SHT_SUNW_COMDAT      = 0x6ffffffb
-        SHT_SUNW_syminfo     = 0x6ffffffc
-        SHT_GNU_verdef       = 0x6ffffffd
-        SHT_GNU_verneed      = 0x6ffffffe
-        SHT_GNU_versym       = 0x6fffffff
-        #SHT_HISUNW           = 0x6fffffff
-        #SHT_HIOS             = 0x6fffffff
-        #SHT_LOPROC           = 0x70000000
-        #SHT_HIPROC           = 0x7fffffff
-        #SHT_LOUSER           = 0x80000000
-        #SHT_HIUSER           = 0x8fffffff
-        # arch specific values
-        SHT_PARISC_EXT       = 0x70000000 # noqa: F841
-        SHT_PARISC_UNWIND    = 0x70000001 # noqa: F841
-        SHT_PARISC_DOC       = 0x70000002 # noqa: F841
-        SHT_MIPS_LIST        = 0x70000000 # noqa: F841
-        SHT_MIPS_CONFLICT    = 0x70000002 # noqa: F841
-        SHT_MIPS_GPTAB       = 0x70000003 # noqa: F841
-        SHT_MIPS_UCODE       = 0x70000004 # noqa: F841
-        SHT_MIPS_DEBUG       = 0x70000005 # noqa: F841
-        SHT_MIPS_REGINFO     = 0x70000006 # noqa: F841
-        SHT_MIPS_PACKAGE     = 0x70000007 # noqa: F841
-        SHT_MIPS_PACKSYM     = 0x70000008 # noqa: F841
-        SHT_MIPS_RELD        = 0x70000009 # noqa: F841
-        SHT_MIPS_IFACE       = 0x7000000b # noqa: F841
-        SHT_MIPS_CONTENT     = 0x7000000c # noqa: F841
-        SHT_MIPS_OPTIONS     = 0x7000000d # noqa: F841
-        SHT_MIPS_SHDR        = 0x70000010 # noqa: F841
-        SHT_MIPS_FDESC       = 0x70000011 # noqa: F841
-        SHT_MIPS_EXTSYM      = 0x70000012 # noqa: F841
-        SHT_MIPS_DENSE       = 0x70000013 # noqa: F841
-        SHT_MIPS_PDESC       = 0x70000014 # noqa: F841
-        SHT_MIPS_LOCSYM      = 0x70000015 # noqa: F841
-        SHT_MIPS_AUXSYM      = 0x70000016 # noqa: F841
-        SHT_MIPS_OPTSYM      = 0x70000017 # noqa: F841
-        SHT_MIPS_LOCSTR      = 0x70000018 # noqa: F841
-        SHT_MIPS_LINE        = 0x70000019 # noqa: F841
-        SHT_MIPS_RFDESC      = 0x7000001a # noqa: F841
-        SHT_MIPS_DELTASYM    = 0x7000001b # noqa: F841
-        SHT_MIPS_DELTAINST   = 0x7000001c # noqa: F841
-        SHT_MIPS_DELTACLASS  = 0x7000001d # noqa: F841
-        SHT_MIPS_DWARF       = 0x7000001e # noqa: F841
-        SHT_MIPS_DELTADECL   = 0x7000001f # noqa: F841
-        SHT_MIPS_SYMBOL_LIB  = 0x70000020 # noqa: F841
-        SHT_MIPS_EVENTS      = 0x70000021 # noqa: F841
-        SHT_MIPS_TRANSLATE   = 0x70000022 # noqa: F841
-        SHT_MIPS_PIXIE       = 0x70000023 # noqa: F841
-        SHT_MIPS_XLATE       = 0x70000024 # noqa: F841
-        SHT_MIPS_XLATE_DEBUG = 0x70000025 # noqa: F841
-        SHT_MIPS_WHIRL       = 0x70000026 # noqa: F841
-        SHT_MIPS_EH_REGION   = 0x70000027 # noqa: F841
-        SHT_MIPS_XLATE_OLD   = 0x70000028 # noqa: F841
-        SHT_MIPS_PDR_EXCEPTION = 0x70000029 # noqa: F841
+        SHT_NULL                           = 0
+        SHT_PROGBITS                       = 1
+        SHT_SYMTAB                         = 2
+        SHT_STRTAB                         = 3
+        SHT_RELA                           = 4
+        SHT_HASH                           = 5
+        SHT_DYNAMIC                        = 6
+        SHT_NOTE                           = 7
+        SHT_NOBITS                         = 8
+        SHT_REL                            = 9
+        SHT_SHLIB                          = 10
+        SHT_DYNSYM                         = 11
+        SHT_INIT_ARRAY                     = 14
+        SHT_FINI_ARRAY                     = 15
+        SHT_PREINIT_ARRAY                  = 16
+        SHT_GROUP                          = 17
+        SHT_SYMTAB_SHNDX                   = 18
+        SHT_RELR                           = 19
+        #SHT_LOOS                          = 0x60000000
+        SHT_ANDROID_REL                    = 0x60000001
+        SHT_ANDROID_RELA                   = 0x60000002
+        SHT_HP_OVLBITS                     = 0x60000000 # noqa: F841
+        SHT_HP_DLKM                        = 0x60000001 # noqa: F841
+        SHT_HP_COMDAT                      = 0x60000002 # noqa: F841
+        SHT_HP_OBJDICT                     = 0x60000003 # noqa: F841
+        SHT_HP_ANNOT                       = 0x60000004 # noqa: F841
+        SHT_IA_64_VMS_TRACE                = 0x60000000 # noqa: F841
+        SHT_IA_64_VMS_TIE_SIGNATURES       = 0x60000001 # noqa: F841
+        SHT_IA_64_VMS_DEBUG                = 0x60000002 # noqa: F841
+        SHT_IA_64_VMS_DEBUG_STR            = 0x60000003 # noqa: F841
+        SHT_IA_64_VMS_LINKAGES             = 0x60000004 # noqa: F841
+        SHT_IA_64_VMS_SYMBOL_VECTOR        = 0x60000005 # noqa: F841
+        SHT_IA_64_VMS_FIXUP                = 0x60000006 # noqa: F841
+        SHT_IA_64_VMS_DISPLAY_NAME_INFO    = 0x60000007 # noqa: F841
+        SHT_GNU_INCREMENTAL_INPUTS         = 0x6fff4700
+        SHT_LLVM_ODRTAB                    = 0x6fff4c00
+        SHT_LLVM_LINKER_OPTIONS            = 0x6fff4c01
+        SHT_LLVM_CALL_GRAPH_PROFILE        = 0x6fff4c02
+        SHT_LLVM_ADDRSIG                   = 0x6fff4c03
+        SHT_LLVM_DEPENDENT_LIBRARIES       = 0x6fff4c04
+        SHT_LLVM_SYMPART                   = 0x6fff4c05
+        SHT_LLVM_PART_EHDR                 = 0x6fff4c06
+        SHT_LLVM_PART_PHDR                 = 0x6fff4c07
+        SHT_LLVM_BB_ADDR_MAP_V0            = 0x6fff4c08
+        SHT_LLVM_CALL_GRAPH_PROFILE        = 0x6fff4c09
+        SHT_LLVM_BB_ADDR_MAP               = 0x6fff4c0a
+        SHT_LLVM_OFFLOADING                = 0x6fff4c0b
+        SHT_LLVM_LTO                       = 0x6fff4c0c
+        SHT_ANDROID_RELR                   = 0x6fffff00
+        SHT_GNU_ATTRIBUTES                 = 0x6ffffff5
+        SHT_GNU_HASH                       = 0x6ffffff6
+        SHT_GNU_LIBLIST                    = 0x6ffffff7
+        SHT_CHECKSUM                       = 0x6ffffff8
+        #SHT_LOSUNW                        = 0x6ffffffa
+        SHT_SUNW_move                      = 0x6ffffffa
+        SHT_SUNW_COMDAT                    = 0x6ffffffb
+        SHT_SUNW_syminfo                   = 0x6ffffffc
+        SHT_GNU_verdef                     = 0x6ffffffd
+        SHT_GNU_verneed                    = 0x6ffffffe
+        SHT_GNU_versym                     = 0x6fffffff
+        #SHT_HISUNW                        = 0x6fffffff
+        #SHT_HIOS                          = 0x6fffffff
+        #SHT_LOPROC                        = 0x70000000
+        SHT_AARCH64_ATTRIBUTES             = 0x70000003 # noqa: F841
+        SHT_AARCH64_AUTH_RELR              = 0x70000004 # noqa: F841
+        SHT_AARCH64_MEMTAG_GLOBALS_STATIC  = 0x70000007 # noqa: F841
+        SHT_AARCH64_MEMTAG_GLOBALS_DYNAMIC = 0x70000008 # noqa: F841
+        SHT_ALPHA_DEBUG                    = 0x70000001 # noqa: F841
+        SHT_ALPHA_REGINFO                  = 0x70000002 # noqa: F841
+        SHT_ARC_ATTRIBUTES                 = 0x70000001 # noqa: F841
+        SHT_ARM_EXIDX                      = 0x70000001 # noqa: F841
+        SHT_ARM_PREEMPTMAP                 = 0x70000002 # noqa: F841
+        SHT_ARM_ATTRIBUTES                 = 0x70000003 # noqa: F841
+        SHT_ARM_DEBUGOVERLAY               = 0x70000004 # noqa: F841
+        SHT_ARM_OVERLAYSECTION             = 0x70000005 # noqa: F841
+        SHT_C6000_UNWIND                   = 0x70000001 # noqa: F841
+        SHT_C6000_PREEMPTMAP               = 0x70000002 # noqa: F841
+        SHT_C6000_ATTRIBUTES               = 0x70000003 # noqa: F841
+        SHT_CSKY_ATTRIBUTES                = 0x70000001 # noqa: F841
+        SHT_IA_64_EXT                      = 0x70000000 # noqa: F841
+        SHT_IA_64_UNWIND                   = 0x70000001 # noqa: F841
+        SHT_IA_64_LOPSREG                  = 0x78000000 # noqa: F841
+        SHT_IA_64_HIPSREG                  = 0x78ffffff # noqa: F841
+        SHT_IA_64_PRIORITY_INIT            = 0x79000000 # noqa: F841
+        SHT_MIPS_LIBLIST                   = 0x70000000 # noqa: F841
+        SHT_MIPS_MSYM                      = 0x70000001 # noqa: F841
+        SHT_MIPS_CONFLICT                  = 0x70000002 # noqa: F841
+        SHT_MIPS_GPTAB                     = 0x70000003 # noqa: F841
+        SHT_MIPS_UCODE                     = 0x70000004 # noqa: F841
+        SHT_MIPS_DEBUG                     = 0x70000005 # noqa: F841
+        SHT_MIPS_REGINFO                   = 0x70000006 # noqa: F841
+        SHT_MIPS_PACKAGE                   = 0x70000007 # noqa: F841
+        SHT_MIPS_PACKSYM                   = 0x70000008 # noqa: F841
+        SHT_MIPS_RELD                      = 0x70000009 # noqa: F841
+        SHT_MIPS_IFACE                     = 0x7000000b # noqa: F841
+        SHT_MIPS_CONTENT                   = 0x7000000c # noqa: F841
+        SHT_MIPS_OPTIONS                   = 0x7000000d # noqa: F841
+        SHT_MIPS_SHDR                      = 0x70000010 # noqa: F841
+        SHT_MIPS_FDESC                     = 0x70000011 # noqa: F841
+        SHT_MIPS_EXTSYM                    = 0x70000012 # noqa: F841
+        SHT_MIPS_DENSE                     = 0x70000013 # noqa: F841
+        SHT_MIPS_PDESC                     = 0x70000014 # noqa: F841
+        SHT_MIPS_LOCSYM                    = 0x70000015 # noqa: F841
+        SHT_MIPS_AUXSYM                    = 0x70000016 # noqa: F841
+        SHT_MIPS_OPTSYM                    = 0x70000017 # noqa: F841
+        SHT_MIPS_LOCSTR                    = 0x70000018 # noqa: F841
+        SHT_MIPS_LINE                      = 0x70000019 # noqa: F841
+        SHT_MIPS_RFDESC                    = 0x7000001a # noqa: F841
+        SHT_MIPS_DELTASYM                  = 0x7000001b # noqa: F841
+        SHT_MIPS_DELTAINST                 = 0x7000001c # noqa: F841
+        SHT_MIPS_DELTACLASS                = 0x7000001d # noqa: F841
+        SHT_MIPS_DWARF                     = 0x7000001e # noqa: F841
+        SHT_MIPS_DELTADECL                 = 0x7000001f # noqa: F841
+        SHT_MIPS_SYMBOL_LIB                = 0x70000020 # noqa: F841
+        SHT_MIPS_EVENTS                    = 0x70000021 # noqa: F841
+        SHT_MIPS_TRANSLATE                 = 0x70000022 # noqa: F841
+        SHT_MIPS_PIXIE                     = 0x70000023 # noqa: F841
+        SHT_MIPS_XLATE                     = 0x70000024 # noqa: F841
+        SHT_MIPS_XLATE_DEBUG               = 0x70000025 # noqa: F841
+        SHT_MIPS_WHIRL                     = 0x70000026 # noqa: F841
+        SHT_MIPS_EH_REGION                 = 0x70000027 # noqa: F841
+        SHT_MIPS_XLATE_OLD                 = 0x70000028 # noqa: F841
+        SHT_MIPS_PDR_EXCEPTION             = 0x70000029 # noqa: F841
+        SHT_MIPS_ABIFLAGS                  = 0x7000002a # noqa: F841
+        SHT_MIPS_XHASH                     = 0x7000002b # noqa: F841
+        SHT_MSP430_ATTRIBUTES              = 0x70000003 # noqa: F841
+        SHT_MSP430_SEC_FLAGS               = 0x70000005 # noqa: F841
+        SHT_MSP430_SYM_ALIASES             = 0x70000006 # noqa: F841
+        SHT_NFP_MECONFIG                   = 0x70000001 # noqa: F841
+        SHT_NFP_INITREG                    = 0x70000002 # noqa: F841
+        SHT_PARISC_EXT                     = 0x70000000 # noqa: F841
+        SHT_PARISC_UNWIND                  = 0x70000001 # noqa: F841
+        SHT_PARISC_DOC                     = 0x70000002 # noqa: F841
+        SHT_PARISC_ANNOT                   = 0x70000003 # noqa: F841
+        SHT_PARISC_DLKM                    = 0x70000004 # noqa: F841
+        SHT_PARISC_SYMEXTN                 = 0x70000008 # noqa: F841
+        SHT_PARISC_STUBS                   = 0x70000009 # noqa: F841
+        SHT_RISCV_ATTRIBUTES               = 0x70000003 # noqa: F841
+        SHT_V850_SCOMMON                   = 0x70000000 # noqa: F841
+        SHT_V850_TCOMMON                   = 0x70000001 # noqa: F841
+        SHT_V850_ZCOMMON                   = 0x70000002 # noqa: F841
+        SHT_X86_64_UNWIND                  = 0x70000001 # noqa: F841
+        SHT_TI_ICODE                       = 0x7F000000 # noqa: F841
+        SHT_TI_XREF                        = 0x7F000001 # noqa: F841
+        SHT_TI_HANDLER                     = 0x7F000002 # noqa: F841
+        SHT_TI_INITINFO                    = 0x7F000003 # noqa: F841
+        SHT_TI_PHATTRS                     = 0x7F000004 # noqa: F841
+        SHT_ORDERED                        = 0x7fffffff # noqa: F841
+        #SHT_HIPROC                        = 0x7fffffff
+        #SHT_LOUSER                        = 0x80000000
+        SHT_NFP_UDEBUG                     = 0x80000000 # noqa: F841
+        SHT_RENESAS_IOP                    = 0x80000000 # noqa: F841
+        #SHT_HIUSER                        = 0x8fffffff
+        SHT_RENESAS_INFO                   = 0xa0000000 # noqa: F841
 
         # sh_flags
         SHF_WRITE            = 1
@@ -2466,7 +2596,6 @@ class Elf:
         SHF_RO_AFTER_INIT    = 0x00200000 # noqa: F841
         SHF_ORDERED          = 0x40000000 # noqa: F841
         SHF_EXCLUDE          = 0x80000000
-        # arch specific values
         SHF_MIPS_NODUPES     = 0x01000000 # noqa: F841
         SHF_MIPS_NAMES       = 0x02000000 # noqa: F841
         SHF_MIPS_LOCAL       = 0x04000000 # noqa: F841
@@ -2534,28 +2663,55 @@ class Elf:
 
 class Instruction:
     """GEF representation of a CPU instruction."""
+
     def __init__(self, address, location, mnemo, operands, opcodes):
         # example:
         #   address: 0x55555555a7d0
         #   location: "" or "<main+0>"
         #   mnemo: "lea"
-        #   operands: ['rcx', '[rip+0x11ee5]        # 0x55555556c69a']
+        #   operands: "rcx, [rip+0x11ee5]        # 0x55555556c69a"
         #   opcodes: b'H\x8d\r\xe5\x1e\x01\x00'
         self.address = address
         self.location = location
         self.mnemonic = mnemo
+
+        # merge symbol includes ","; e.g.: <... , ...>
+        operands = [x.strip() for x in operands.split(",")]
+        if len(operands) > 1:
+            operands, o = operands[:-1], operands[-1]
+            while (o.count("<") - o.count("operator<<") * 2) != (o.count(">") - o.count("operator>>") * 2):
+                if len(operands) > 1:
+                    operands, oo = operands[:-1], operands[-1]
+                    o = oo + ", " + o
+                else:
+                    o = operands[0] + ", " + o
+                    operands = []
+                    break
+            operands += [o]
+
         self.operands = operands
         self.opcodes = opcodes
         return
+
+    def hexlify_symbol_offset(self, x):
+        r1 = self.RE_SPLIT_SYMBOL.match(x) # r"(.*?)<(.+)>(.*)$"
+        if not r1:
+            return x
+        r2 = self.RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
+        if r2:
+            sym_x = "{}+{:#x}".format(self.smartify_text(r2.group(1)), int(r2.group(2)))
+        else:
+            sym_x = self.smartify_text(r1.group(2))
+        return "{:s}<{:s}>{:s}".format(r1.group(1), sym_x, r1.group(3))
 
     RE_SPLIT_LAST_OPERAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
     RE_SPLIT_LAST_OPERAND_ARM64 = re.compile(r"//.+$")
     RE_SPLIT_LAST_OPERAND_ARM32 = re.compile(r";.+$")
     RE_SPLIT_LAST_OPERAND_MICROBLAZE = re.compile(r"//.+$")
     RE_SPLIT_LAST_OPERAND_LOONGARCH64 = re.compile(r"(# .*)$")
-    RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)")
+    RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+>)")
     RE_IS_DIGIT_COMMENT = re.compile(r"#?-?(0x[0-9a-f]+|\d+)")
-    RE_SPLIT_SYMBOL = re.compile(r"(.*)<(.+?)>(.*)$")
+    RE_SPLIT_SYMBOL = re.compile(r"(.*?)<(.+)>(.*)$")
     RE_SPLIT_SYMBOL_OFFSET = re.compile(r"(.+)\+(\d+)$")
 
     # Allow formatting an instruction with {:o} to show opcodes.
@@ -2581,11 +2737,15 @@ class Instruction:
         else:
             opcodes_len = int(format_spec[:-1])
 
-        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # e.g.: "488d0de51e0100"
-        # ex1: spec:"4o", opcodes:01020304   -> 01020304
-        # ex2: spec:"4o", opcodes:0102030405 -> 010203..
-        if opcodes_len < len(self.opcodes):
-            opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
+        if opcodes_len == 0:
+            opcodes_text = ""
+        else:
+            opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # e.g.: "488d0de51e0100"
+            # ex1: spec:"4o", opcodes:01020304   -> 01020304
+            # ex2: spec:"4o", opcodes:0102030405 -> 010203..
+            if opcodes_len < len(self.opcodes):
+                opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
+
         if to_highlight:
             color_opcode = Config.get_gef_setting("theme.disassemble_opcode_highlight")
         else:
@@ -2639,7 +2799,7 @@ class Instruction:
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
-            elif is_arm32():
+            elif is_arm32() or is_arm32_cortex_m():
                 r = self.RE_SPLIT_LAST_OPERAND_ARM32.match(last_operands) # r";.+$"
                 if r:
                     additional_1 = last_operands
@@ -2655,18 +2815,7 @@ class Instruction:
                     additional_1 = r.group(1)
                     operands = operands[:-1]
 
-        def hexlify_symbol_offset(x):
-            r1 = self.RE_SPLIT_SYMBOL.match(x) # r"(.*)<(.+?)>(.*)$"
-            if not r1:
-                return x
-            r2 = self.RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
-            if r2:
-                sym_x = "{}+{:#x}".format(self.smartify_text(r2.group(1)), int(r2.group(2)))
-            else:
-                sym_x = self.smartify_text(r1.group(2))
-            return "{:s}<{:s}>{:s}".format(r1.group(1), sym_x, r1.group(3))
-
-        additional_1 = hexlify_symbol_offset(additional_1)
+        additional_1 = self.hexlify_symbol_offset(additional_1)
 
         # format operands
         if to_highlight:
@@ -2677,19 +2826,18 @@ class Instruction:
             color_operands_normal = Config.get_gef_setting("theme.disassemble_operands_normal")
             color_operands_const = Config.get_gef_setting("theme.disassemble_operands_const")
             color_operands_symbol = Config.get_gef_setting("theme.disassemble_operands_symbol")
-        colored_operands = []
+
         # extract -> coloring -> join
+        colored_operands = []
         for o1 in operands:
             colored_o1 = []
-            # *, [, ], (, ), %, :, space
-            # not first +, - (without #, @)
-            # <...>
-            for o2 in self.RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)"
+            # split by *, [, ], (, ), %, :, space, non-first +, - (without #, @, %), <...>
+            for o2 in self.RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+>)"
                 o2 = o2.strip()
                 if o2 == "":
                     continue
                 if o2[0] == "<":
-                    colored_o1.append(hexlify_symbol_offset(o2))
+                    colored_o1.append(self.hexlify_symbol_offset(o2))
                     colored_o1.append(" ")
                 elif o2 in ["-", "+", "*"]:
                     colored_o1.append(Color.colorify(o2, color_operands_symbol))
@@ -2714,10 +2862,12 @@ class Instruction:
         operands = Color.colorify(", ", color_operands_symbol).join(colored_operands)
 
         # the case that gdb does not append symbol but symbol exists
-        if is_branch and "<" not in operands and self.operands and self.operands[-1]:
-            addr = ContextCommand.get_branch_addr(self)
-            sym = Symbol.get_symbol_string(addr).lstrip()
-            additional_1 = sym
+        if is_branch:
+            if "<" not in operands and "<" not in additional_1:
+                if self.operands and self.operands[-1]:
+                    addr = ContextCommand.get_branch_addr(self)
+                    sym = Symbol.get_symbol_string(addr).lstrip()
+                    additional_1 = sym
 
         # formatting
         out = "{:s} {:s}   {:s}   {:s} {:s} {:s}".format(
@@ -2782,8 +2932,10 @@ class Instruction:
 
 
 class GlibcHeap:
+    """Manages glibc heap-specific settings."""
+
     class HeapInfo:
-        """GEF representation of heap_info"""
+        """GEF representation of heap_info."""
 
         def __init__(self, addr):
             self.__addr = addr
@@ -2796,7 +2948,7 @@ class GlibcHeap:
                 MALLOC_ALIGNMENT = 0x8
             self.MALLOC_ALIGN_MASK = MALLOC_ALIGNMENT - 1
 
-            self.char_t = GefUtil.cached_lookup_type("char")
+            self.char_t = GefUtil.cached_lookup_type("unsigned char")
             self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
@@ -2894,13 +3046,14 @@ class GlibcHeap:
             return getattr(self, item)
 
     class MallocPar:
-        """GEF representation of malloc_par"""
+        """GEF representation of malloc_par."""
+
         def __init__(self, addr):
             self.__addr = addr
 
-            self.char_t = GefUtil.cached_lookup_type("char")
-            self.int_t = GefUtil.cached_lookup_type("int")
-            self.long_t = GefUtil.cached_lookup_type("long")
+            self.char_t = GefUtil.cached_lookup_type("unsigned char")
+            self.int_t = GefUtil.cached_lookup_type("unsigned int")
+            self.long_t = GefUtil.cached_lookup_type("unsigned long")
             self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
@@ -3197,7 +3350,8 @@ class GlibcHeap:
         return None
 
     class MallocStateStruct:
-        """GEF representation of malloc_state"""
+        """GEF representation of malloc_state."""
+
         def __init__(self, addr):
             if (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
                 # MALLOC_ALIGNMENT is changed from libc 2.26.
@@ -3210,7 +3364,7 @@ class GlibcHeap:
             self.num_binmap = 4
             self.__addr = addr
 
-            self.int_t = GefUtil.cached_lookup_type("int")
+            self.int_t = GefUtil.cached_lookup_type("unsigned int")
             self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
@@ -3504,7 +3658,8 @@ class GlibcHeap:
         return None
 
     class GlibcArena:
-        """Glibc arena class"""
+        """Glibc arena class."""
+
         TCACHE_MAX_BINS = 0x40
 
         def __init__(self, arena_addr=None):
@@ -3535,7 +3690,10 @@ class GlibcHeap:
             return self.__arena[item]
 
         def __getattr__(self, item):
-            return self.__arena[item]
+            try:
+                return self.__arena[item]
+            except RuntimeError:
+                raise AttributeError from None
 
         def __int__(self):
             return self.__addr
@@ -3749,21 +3907,24 @@ class GlibcHeap:
                 try:
                     chunk = self.tcachebin(i)
                 except gdb.MemoryError:
-                    err("tcache[{:d}] is corrupted.".format(i))
+                    sz = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
+                    err("tcache[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                     continue
                 chunks = []
                 while True:
                     if chunk is None:
                         break
                     if chunk.address in chunks:
-                        err("tcache[{:d}] has a loop.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
+                        err("tcache[idx={:d}, sz={:#x}] has a loop.".format(i, sz))
                         break # loop detected
                     chunks.append(chunk.address)
                     next_chunk = chunk.get_fwd_ptr(True)
                     if next_chunk == 0:
                         break
                     if next_chunk is None:
-                        err("tcache[{:d}] is corrupted.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
+                        err("tcache[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                         break
                     chunk = GlibcHeap.GlibcChunk(next_chunk)
                 chunks_all[i] = chunks
@@ -3781,21 +3942,24 @@ class GlibcHeap:
                 try:
                     chunk = self.fastbin(i)
                 except gdb.MemoryError:
-                    err("fastbins[{:d}] is corrupted.".format(i))
+                    sz = GlibcHeap.get_binsize_table()["fastbins"][i]["size"]
+                    err("fastbins[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                     continue
                 chunks = []
                 while True:
                     if chunk is None:
                         break
                     if chunk.address in chunks:
-                        err("fastbins[{:d}] has a loop.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["fastbins"][i]["size"]
+                        err("fastbins[idx={:d}, sz={:#x}] has a loop.".format(i, sz))
                         break # loop detected
                     chunks.append(chunk.address)
                     next_chunk = chunk.get_fwd_ptr(True)
                     if next_chunk == 0:
                         break
                     if next_chunk is None:
-                        err("fastbins[{:d}] is corrupted.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["fastbins"][i]["size"]
+                        err("fastbins[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                         break
                     chunk = GlibcHeap.GlibcChunk(next_chunk, from_base=True)
                 chunks_all[i] = chunks
@@ -3808,20 +3972,55 @@ class GlibcHeap:
                 return [] # invalid
             if bk == 0x00 and fw == 0x00:
                 return [] # invalid
-            head = GlibcHeap.GlibcChunk(bk, from_base=True).fwd
+            head = self.bins_addr(index) - current_arch.ptrsize * 2
             if fw == head:
                 return [] # no entry
-            chunks = []
-            while fw != head:
-                chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
-                if chunk.chunk_base_address in chunks:
-                    err("bins[{:d}] has a loop.".format(index))
+
+            corrupted = False
+            chunks_bk = []
+            while bk != head:
+                chunk = GlibcHeap.GlibcChunk(bk, from_base=True)
+                if chunk.chunk_base_address in chunks_bk:
+                    if index == 0:
+                        err("unsortedbin has a loop.")
+                    elif index in GlibcHeap.get_binsize_table()["small_bins"]:
+                        sz = GlibcHeap.get_binsize_table()["small_bins"][index]["size"]
+                        err("small_bins[idx={:d}, sz={:#x}] has a loop.".format(index, sz))
+                    elif index in GlibcHeap.get_binsize_table()["large_bins"]:
+                        sz_min = GlibcHeap.get_binsize_table()["large_bins"][index]["size_min"]
+                        sz_max = GlibcHeap.get_binsize_table()["large_bins"][index]["size_max"]
+                        err("large_bins[idx={:d}, sz={:#x}-{:#x}] has a loop.".format(index, sz_min, sz_max))
+                    corrupted = True
                     break
-                chunks.append(chunk.chunk_base_address)
-                fw = chunk.fwd
-                if fw is None:
-                    err("bins[{:d}] is corrupted.".format(index))
+                chunks_bk.append(chunk.chunk_base_address)
+                bk = chunk.bck
+                if bk is None:
+                    if index == 0:
+                        err("unsortedbin is corrupted.")
+                    elif index in GlibcHeap.get_binsize_table()["small_bins"]:
+                        sz = GlibcHeap.get_binsize_table()["small_bins"][index]["size"]
+                        err("small_bins[idx={:d}, sz={:#x}] is corrupted.".format(index, sz))
+                    elif index in GlibcHeap.get_binsize_table()["large_bins"]:
+                        sz_min = GlibcHeap.get_binsize_table()["large_bins"][index]["size_min"]
+                        sz_max = GlibcHeap.get_binsize_table()["large_bins"][index]["size_max"]
+                        err("large_bins[idx={:d}, sz={:#x}-{:#x}] is corrupted.".format(index, sz_min, sz_max))
+                    corrupted = True
                     break
+            chunks = chunks_bk[::-1]
+
+            if corrupted:
+                chunks_fw = []
+                while fw != head:
+                    chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
+                    if chunk.chunk_base_address in chunks:
+                        break
+                    if chunk.chunk_base_address in chunks_fw:
+                        break
+                    chunks_fw.append(chunk.chunk_base_address)
+                    fw = chunk.fwd
+                    if fw is None:
+                        break
+                chunks = chunks_fw + chunks
             return chunks
 
         def unsortedbin_list(self):
@@ -3842,24 +4041,24 @@ class GlibcHeap:
             return chunks_all
 
         def reset_bins_info(self):
+            # cached_XXX_list = {bin_idx1: [chunk, chunk, ...], bin_idx2: [chunk, chunk, ...]}
             self.cached_tcache_list = self.tcache_list()
-            self.cached_tcache_addr_list = set().union(*self.cached_tcache_list.values())
-
             self.cached_fastbins_list = self.fastbins_list()
-            self.cached_fastbins_addr_list = set().union(*self.cached_fastbins_list.values())
-
             self.cached_unsortedbin_list = self.unsortedbin_list()
-            self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
-
             self.cached_smallbins_list = self.smallbins_list()
-            self.cached_smallbins_addr_list = set().union(*self.cached_smallbins_list.values())
-
             self.cached_largebins_list = self.largebins_list()
+
+            # cacheed_XXX_addr_list = {chunk, chunk, ...}
+            self.cached_tcache_addr_list = set().union(*self.cached_tcache_list.values())
+            self.cached_fastbins_addr_list = set().union(*self.cached_fastbins_list.values())
+            self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
+            self.cached_smallbins_addr_list = set().union(*self.cached_smallbins_list.values())
             self.cached_largebins_addr_list = set().union(*self.cached_largebins_list.values())
 
+            # dict[address] = ["bins info1", "bins info2", ...]
             self.bins_dict_for_address = {}
             for tcache_idx, tcache_list in self.cached_tcache_list.items():
-                for address in set(tcache_list):
+                for address in tcache_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(tcache_list) if x == address])
                     sz = GlibcHeap.get_binsize_table()["tcache"][tcache_idx]["size"]
                     m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(tcache_idx, sz, pos, len(tcache_list))
@@ -3871,20 +4070,21 @@ class GlibcHeap:
                     m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
                     self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
 
+            # dict[base_address] = ["bins info1", "bins info2", ...]
             self.bins_dict_for_base_address = {}
             for _, unsortedbin_list in self.cached_unsortedbin_list.items():
-                for base_address in set(unsortedbin_list):
+                for base_address in unsortedbin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(unsortedbin_list) if x == base_address])
                     m = "unsortedbins[{:s}/{:d}]".format(pos, len(unsortedbin_list))
                     self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
             for smallbin_idx, smallbin_list in self.cached_smallbins_list.items():
-                for base_address in set(smallbin_list):
+                for base_address in smallbin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == base_address])
                     sz = GlibcHeap.get_binsize_table()["small_bins"][smallbin_idx]["size"]
                     m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
                     self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
             for largebin_idx, largebin_list in self.cached_largebins_list.items():
-                for base_address in set(largebin_list):
+                for base_address in largebin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == base_address])
                     sz_min = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_min"]
                     sz_max = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_max"]
@@ -4022,7 +4222,10 @@ class GlibcHeap:
         fd = fwd # for compat
 
         def get_bkw_ptr(self):
-            return read_int_from_memory(self.address + self.ptrsize)
+            try:
+                return read_int_from_memory(self.address + self.ptrsize)
+            except gdb.MemoryError:
+                return None
 
         @property
         def bck(self):
@@ -4055,9 +4258,9 @@ class GlibcHeap:
             return read_int_from_memory(self.size_addr) & 0x04
 
         def is_used(self):
-            """Check if the current block is used by:
-            - checking the M bit is true
-            - or checking that next chunk PREV_INUSE flag is true"""
+            # Check if the current block is used by:
+            # - checking the M bit is true
+            # - or checking that next chunk PREV_INUSE flag is true
             if self.has_m_bit():
                 return True
             next_chunk = self.get_next_chunk()
@@ -4145,56 +4348,89 @@ class GlibcHeap:
             return "|".join(flags)
 
         def to_str(self, arena):
+            def get_sym(addr):
+                a = ProcessMap.lookup_address(addr)
+                b = Symbol.get_symbol_string(addr)
+                return a, b
+
+            def get_sym_chunk(addr):
+                a = ProcessMap.lookup_address(addr)
+                b1 = Color.colorify_hex(addr, Config.get_gef_setting("theme.heap_chunk_address_freed"))
+                b2 = Color.colorify_hex(addr, Config.get_gef_setting("theme.heap_chunk_address_used"))
+                c = Symbol.get_symbol_string(addr)
+                return a, (b1, b2), c
+
+            def get_err(addrs, sll=False):
+                for a in addrs:
+                    if not a.valid:
+                        if sll and a.value == 0:
+                            # single link-list && 0: ok
+                            continue
+                        return ", {:s}".format(Color.colorify("corrupted",  Config.get_gef_setting("theme.heap_corrupted_msg")))
+                return ""
+
             chunk_c = Color.colorify("Chunk", Config.get_gef_setting("theme.heap_chunk_label"))
             size_c = Color.colorify_hex(self.get_chunk_size(), Config.get_gef_setting("theme.heap_chunk_size"))
-            base_c = Color.colorify_hex(self.chunk_base_address, Config.get_gef_setting("theme.heap_chunk_address_freed"))
-            addr_c = Color.colorify_hex(self.address, Config.get_gef_setting("theme.heap_chunk_address_freed"))
+            base, (base_c_f, base_c_u), base_sym = get_sym_chunk(self.chunk_base_address)
+            addr, (addr_c_f, addr_c_u), addr_sym = get_sym_chunk(self.address)
             flags = self.flags_as_string()
 
             # large bins
             if arena.is_chunk_in_largebins(self):
-                fd = ProcessMap.lookup_address(self.fd)
-                bk = ProcessMap.lookup_address(self.bk)
+                fd, fd_sym = get_sym(self.fd)
+                bk, bk_sym = get_sym(self.bk)
+                err = get_err([fd, bk])
                 if is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
                     # largebin and valid (fd|bk)_nextsize
-                    fd_nextsize = ProcessMap.lookup_address(self.fd_nextsize)
-                    bk_nextsize = ProcessMap.lookup_address(self.bk_nextsize)
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+                    fdn, fdn_sym = get_sym(self.fd_nextsize)
+                    bkn, bkn_sym = get_sym(self.bk_nextsize)
+                    fmt = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}, bk={!s}{:s}, "
+                    fmt += "fd_nextsize={!s}{:s}, bk_nextsize={!s}{:s})"
+                    msg = fmt.format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags,
+                        fd, fd_sym, bk, bk_sym, fdn, fdn_sym, bkn, bkn_sym, err,
+                    )
                 else:
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
+                    msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}, bk={!s}{:s}{:s})".format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, bk, bk_sym, err,
+                    )
 
             # small bins / unsorted bin
             elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
-                fd = ProcessMap.lookup_address(self.fd)
-                bk = ProcessMap.lookup_address(self.bk)
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
+                fd, fd_sym = get_sym(self.fd)
+                bk, bk_sym = get_sym(self.bk)
+                err = get_err([fd, bk])
+                msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}, bk={!s}{:s}{:s})".format(
+                    chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, bk, bk_sym, err,
+                )
 
             # tcache / fastbins
             elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
-                fd = self.get_fwd_ptr(sll=False)
                 if get_libc_version() < (2, 32):
-                    fd = ProcessMap.lookup_address(fd)
-                    fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd)
+                    fd, fd_sym = get_sym(self.get_fwd_ptr(sll=False))
+                    err = get_err([fd], sll=True)
+                    msg = "{:s}(base={:s}{:s}. addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}{:s})".format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, err,
+                    )
                 else:
-                    decoded_fd = ProcessMap.lookup_address(self.get_fwd_ptr(sll=True))
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
+                    fd, fd_sym = get_sym(self.get_fwd_ptr(sll=False))
+                    decoded_fd, decoded_fd_sym = get_sym(self.get_fwd_ptr(sll=True))
+                    err = get_err([decoded_fd], sll=True)
+                    msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}(={!s}{:s}){:s})".format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, decoded_fd, decoded_fd_sym, err,
+                    )
 
             # top
             elif arena.top == self.chunk_base_address:
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
+                msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s})".format(
+                    chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags,
+                )
 
             # used chunk
             else:
-                base_c = Color.colorify_hex(self.chunk_base_address, Config.get_gef_setting("theme.heap_chunk_address_used"))
-                addr_c = Color.colorify_hex(self.address, Config.get_gef_setting("theme.heap_chunk_address_used"))
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
+                msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s})".format(
+                    chunk_c, base_c_u, base_sym, addr_c_u, addr_sym, size_c, flags,
+                )
             return msg
 
         def psprint(self, arena):
@@ -4527,6 +4763,8 @@ def info(msg):
 
 
 class String:
+    """A collection of utility functions that are related to strings."""
+
     STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
     STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     STRING_ASCII_LETTERS = STRING_ASCII_LOWERCASE + STRING_ASCII_UPPERCASE
@@ -4711,6 +4949,8 @@ def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, ba
 
 
 class Symbol:
+    """A collection of utility functions that are related to symbols."""
+
     # `info symbol` called from gdb_get_location is heavy processing.
     # Moreover, AddressUtil.recursive_dereference causes each address to be resolved every time.
     # Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
@@ -4879,6 +5119,8 @@ def load_ropper(f):
 
 
 class Disasm:
+    """A collection of utility functions that makes disassemble."""
+
     __gef_prev_arch__ = None # previous valid result of edb.selected_frame().architecture()
 
     @staticmethod
@@ -4908,18 +5150,14 @@ class Disasm:
             address = insn["addr"]
             asm = insn["asm"].rstrip().split(None, 1)
             if len(asm) > 1:
-                mnemo, operands = asm
-                if "\t" in operands:
-                    first, second = operands.rsplit("\t", 1)
-                    operands = [x.strip() for x in first.split(",")] + [second]
-                else:
-                    operands = [x.strip() for x in operands.split(",")]
+                mnemo = asm[0]
+                operands = asm[1].replace("\t", " ")
             else:
-                mnemo, operands = asm[0], []
+                mnemo, operands = asm[0], ""
 
             location = Symbol.get_symbol_string(address, nosymbol_string=" <NO_SYMBOL>")
 
-            if is_arm32() and insn["addr"] & 1:
+            if (is_arm32() or is_arm32_cortex_m()) and insn["addr"] & 1:
                 opcodes = read_memory(insn["addr"] - 1, insn["length"])
             else:
                 opcodes = read_memory(insn["addr"], insn["length"])
@@ -5013,8 +5251,7 @@ class Disasm:
         It is also called directly from some commands such as Disasm.capstone_disassemble."""
         def cs_insn_to_gef_insn(cs_insn):
             loc = Symbol.get_symbol_string(cs_insn.address, nosymbol_string=" <NO_SYMBOL>")
-            ops = [] + cs_insn.op_str.split(", ")
-            return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
+            return Instruction(cs_insn.address, loc, cs_insn.mnemonic, cs_insn.op_str, cs_insn.bytes)
 
         capstone = sys.modules["capstone"]
         _arch = kwargs.get("arch", None)
@@ -5041,7 +5278,7 @@ class Disasm:
         read_size = gef_getpagesize() - (location & gef_getpagesize_mask_low())
 
         # fix for arm thumb2 mode
-        if is_arm32() and read_addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and read_addr & 1:
             read_addr -= 1
             read_size += 1
 
@@ -5081,7 +5318,7 @@ class Disasm:
                     break
 
                 # failure (maybe the code is invalid)
-                yield Instruction(location, "", "(bad)", [], code_remain[:arch_inst_length])
+                yield Instruction(location, "", "(bad)", "", code_remain[:arch_inst_length])
                 nb_insn -= 1
                 if nb_insn == 0:
                     return
@@ -5167,6 +5404,8 @@ def get_insn_prev(addr=None):
 
 
 class Checksec:
+    """Manages checksec related functions."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_cet_status_old_interface():
@@ -5282,6 +5521,8 @@ class Checksec:
 
 
 class Endian:
+    """Manages endianness related functions."""
+
     @staticmethod
     @Cache.cache_this_session
     def get_endian():
@@ -5309,6 +5550,7 @@ class Endian:
 
 class Architecture:
     """Generic metaclass for the architecture supported by GEF."""
+
     __metaclass__ = abc.ABCMeta
 
     # base properties
@@ -5560,6 +5802,8 @@ class Architecture:
 
 
 class RISCV(Architecture):
+    """GEF representation of RISCV-32 architecture."""
+
     arch = "RISCV"
     mode = "32"
 
@@ -5580,8 +5824,8 @@ class RISCV(Architecture):
     ]
     alias_registers = {
         "$zero": "$x0", "$ra": "$x1", "$sp": "$x2", "$gp": "$x3",
-        "$tp": "$x4/$s0", "$t0": "$x5", "$t1": "$x6", "$t2": "$x7",
-        "$fp": "$x8", "$s1": "$x9", "$a0": "$x10", "$a1": "$x11",
+        "$tp": "$x4", "$t0": "$x5", "$t1": "$x6", "$t2": "$x7",
+        "$fp": "$x8/$s0", "$s1": "$x9", "$a0": "$x10", "$a1": "$x11",
         "$a2": "$x12", "$a3": "$x13", "$a4": "$x14", "$a5": "$x15",
         "$a6": "$x16", "$a7": "$x17", "$s2": "$x18", "$s3": "$x19",
         "$s4": "$x20", "$s5": "$x21", "$s6": "$x22", "$s7": "$x23",
@@ -5775,6 +6019,8 @@ class RISCV(Architecture):
 
 
 class RISCV64(RISCV):
+    """GEF representation of RISCV-64 architecture."""
+
     arch = "RISCV"
     mode = "64"
 
@@ -5851,6 +6097,8 @@ class RISCV64(RISCV):
 
 
 class ARM(Architecture):
+    """GEF representation of ARM-32 architecture."""
+
     arch = "ARM"
 
     load_condition = [
@@ -5873,26 +6121,76 @@ class ARM(Architecture):
         "ARMV7",
     ]
 
-    all_registers = [
-        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
-        "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
-        "$cpsr",
-    ]
+    __mode = None
+
+    def is_cortex_m(self):
+        if self.__mode == "Cortex-A":
+            return False
+        if self.__mode == "Cortex-M":
+            return True
+
+        if self.__mode is None:
+            # is_alive and get_register are not yet defined here and cannot be used.
+            try:
+                gdb.execute("info registers cpsr", to_string=True)
+                self.__mode = "Cortex-A"
+                return False
+            except gdb.error:
+                pass
+            try:
+                gdb.execute("info registers xpsr", to_string=True)
+                self.__mode = "Cortex-M"
+                return True
+            except gdb.error:
+                pass
+        # default is Cortex-A
+        return False
+
+    @property
+    def all_registers(self):
+        if self.is_cortex_m():
+            return [
+                "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+                "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
+                "$xpsr",
+                "$msp", "$psp", "$primask", "$basepri", "$faultmask", "$control",
+            ]
+        else:
+            return [
+                "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+                "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
+                "$cpsr",
+            ]
+
+    @property
+    def flag_register(self):
+        if self.is_cortex_m():
+            return "$xpsr"
+        else:
+            return "$cpsr"
+
+    @property
+    def thumb_bit(self):
+        if self.is_cortex_m():
+            return 24
+        else:
+            return 5
+
+    @property
+    def flags_table(self):
+        return {
+            31: "negative",
+            30: "zero",
+            29: "carry",
+            28: "overflow",
+            7: "interrupt",
+            6: "fast",
+            self.thumb_bit: "thumb",
+        }
+
     alias_registers = {
         "$r11": "$fp", "$r12": "$ip",
         "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
-    }
-    flag_register = "$cpsr"
-    thumb_bit = 5
-
-    flags_table = {
-        31: "negative",
-        30: "zero",
-        29: "carry",
-        28: "overflow",
-        7: "interrupt",
-        6: "fast",
-        thumb_bit: "thumb",
     }
     return_register = "$r0"
     function_parameters = ["$r0", "$r1", "$r2", "$r3"]
@@ -6129,6 +6427,9 @@ class ARM(Architecture):
             reg = self.flag_register
             val = get_register(reg) & 0xffffffff
 
+        if self.is_cortex_m():
+            return Architecture.flags_to_human(val, self.flags_table)
+
         key = val & 0b11111
         CurrentMode, CurrentPL = self.__mode_dic[key]
 
@@ -6198,6 +6499,8 @@ class ARM(Architecture):
 
 
 class AARCH64(ARM):
+    """GEF representation of ARM-64 architecture."""
+
     arch = "ARM64"
     mode = "ARM"
 
@@ -6329,6 +6632,8 @@ class AARCH64(ARM):
 
 
 class X86(Architecture):
+    """GEF representation of x86-32 architecture."""
+
     arch = "X86"
     mode = "32"
 
@@ -6605,6 +6910,8 @@ class X86(Architecture):
 
 
 class X86_64(X86):
+    """GEF representation of x86-64 architecture."""
+
     arch = "X86"
     mode = "64"
 
@@ -6783,6 +7090,8 @@ class X86_64(X86):
 
 
 class X86_16(X86):
+    """GEF representation of i8086 architecture."""
+
     arch = "X86"
     mode = "16"
 
@@ -6866,6 +7175,8 @@ class X86_16(X86):
 
 
 class PPC(Architecture):
+    """GEF representation of PowerPC-32 architecture."""
+
     arch = "PPC"
     mode = "32"
 
@@ -7092,6 +7403,8 @@ class PPC(Architecture):
 
 
 class PPC64(PPC):
+    """GEF representation of PowerPC-64 architecture."""
+
     arch = "PPC"
     mode = "64"
 
@@ -7172,6 +7485,8 @@ class PPC64(PPC):
 
 
 class SPARC(Architecture):
+    """GEF representation of SPARC-32 architecture."""
+
     arch = "SPARC"
     mode = "32"
 
@@ -7361,6 +7676,8 @@ class SPARC(Architecture):
 
 
 class SPARC32PLUS(SPARC):
+    """GEF representation of SPARC-32+ architecture."""
+
     arch = "SPARC"
     mode = "32PLUS"
 
@@ -7382,6 +7699,8 @@ class SPARC32PLUS(SPARC):
 
 
 class SPARC64(SPARC):
+    """GEF representation of SPARC-64 architecture."""
+
     arch = "SPARC"
     mode = "64"
 
@@ -7464,6 +7783,8 @@ class SPARC64(SPARC):
 
 
 class MIPS(Architecture):
+    """GEF representation of MIPS-32 architecture."""
+
     arch = "MIPS"
     mode = "32"
 
@@ -7671,6 +7992,8 @@ class MIPS(Architecture):
 
 
 class MIPS64(MIPS):
+    """GEF representation of MIPS-64 architecture."""
+
     arch = "MIPS"
     mode = "64"
 
@@ -7750,6 +8073,8 @@ class MIPS64(MIPS):
 
 
 class MIPSN32(MIPS64):
+    """GEF representation of MIPS-N32-ABI architecture."""
+
     arch = "MIPS"
     mode = "n32"
 
@@ -7761,6 +8086,8 @@ class MIPSN32(MIPS64):
 
 
 class S390X(Architecture):
+    """GEF representation of s390x architecture."""
+
     arch = "S390X"
     mode = "64"
 
@@ -8139,6 +8466,8 @@ class S390X(Architecture):
 
 
 class SH4(Architecture):
+    """GEF representation of SH4 architecture."""
+
     arch = "SH4"
     mode = "SH4"
 
@@ -8324,7 +8653,7 @@ class SH4(Architecture):
             b"\x13\xc3", # trapa #19
 
             b"\x83\x60", # mov r8, r0
-            b"\x93\x63", # mov r9,  r3
+            b"\x93\x63", # mov r9, r3
             b"\xa3\x64", # mov r10, r4
             b"\xb3\x65", # mov r11, r5
             b"\xc3\x66", # mov r12, r6
@@ -8333,6 +8662,8 @@ class SH4(Architecture):
 
 
 class M68K(Architecture):
+    """GEF representation of m68000 architecture."""
+
     arch = "M68K"
     mode = "32"
 
@@ -8424,7 +8755,7 @@ class M68K(Architecture):
         conditions = [
             "ne", "eq", "ge", "lt", "gt", "le", "f", "t",
             "gl", "gle", "nge", "ngl", "ngle", "ngt", "nle", "nlt",
-            "oge", "ogl", "ogt", "ole", "olt", "or",
+            "oge", "ogl", "ogt", "ole", "olt", "or", # codespell:ignore
             "seq", "sf", "sne", "st", "ueq", "uge", "ugt", "ule", "ult", "un",
         ]
         for cc in conditions:
@@ -8598,6 +8929,8 @@ class M68K(Architecture):
 
 
 class ALPHA(Architecture):
+    """GEF representation of Alpha architecture."""
+
     arch = "ALPHA"
     mode = "ALPHA"
 
@@ -8794,6 +9127,8 @@ class ALPHA(Architecture):
 
 
 class HPPA(Architecture):
+    """GEF representation of HP-PA-32 architecture."""
+
     arch = "HPPA"
     mode = "32"
 
@@ -9188,6 +9523,8 @@ class HPPA(Architecture):
 
 
 class HPPA64(HPPA):
+    """GEF representation of HP-PA-64 architecture."""
+
     arch = "HPPA"
     mode = "64"
 
@@ -9200,6 +9537,8 @@ class HPPA64(HPPA):
 
 
 class OR1K(Architecture):
+    """GEF representation of OpenRISC 1000 architecture."""
+
     arch = "OR1K"
     mode = "OR1K"
 
@@ -9337,6 +9676,8 @@ class OR1K(Architecture):
 
 
 class NIOS2(Architecture):
+    """GEF representation of NiosII architecture."""
+
     arch = "NIOS2"
     mode = "NIOS2"
 
@@ -9494,6 +9835,8 @@ class NIOS2(Architecture):
 
 
 class MICROBLAZE(Architecture):
+    """GEF representation of MicroBlaze architecture."""
+
     arch = "MICROBLAZE"
     mode = "MICROBLAZE"
 
@@ -9655,6 +9998,8 @@ class MICROBLAZE(Architecture):
 
 
 class XTENSA(Architecture):
+    """GEF representation of Xtensa architecture."""
+
     arch = "XTENSA"
     mode = "XTENSA"
 
@@ -9861,19 +10206,19 @@ class XTENSA(Architecture):
             fmt = "0b{:04b}_0010_1010_{:04b}_{:08b}"
             val = fmt.format(reg, (imm >> 8) & 0xf, imm & 0xff)
             val = int(val, 2)
-            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
         def slli(reg1, reg2, imm):
             fmt = "0b{:04b}_0000_{:04b}_{:04b}_000{:01b}_0001"
             val = fmt.format((32 - imm) & 0xf, reg1, reg2, ((32 - imm) >> 4) & 1)
             val = int(val, 2)
-            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
         def orr(reg1, reg2, reg3):
             fmt = "0b{:04b}_0000_{:04b}_{:04b}_0010_0000"
             val = fmt.format(reg3, reg1, reg2)
             val = int(val, 2)
-            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
         insns = [
             movi(2, (addr >> 21) & 0x7ff), # mov a2, addr[31:21]
@@ -9908,6 +10253,8 @@ class XTENSA(Architecture):
 
 
 class CRIS(Architecture):
+    """GEF representation of CRIS architecture."""
+
     arch = "CRIS"
     mode = "CRIS"
 
@@ -10058,6 +10405,8 @@ class CRIS(Architecture):
 
 
 class LOONGARCH64(Architecture):
+    """GEF representation of Loongarch-64 architecture."""
+
     arch = "LOONGARCH"
     mode = "64"
 
@@ -10240,6 +10589,8 @@ class LOONGARCH64(Architecture):
 
 
 class ARC(Architecture):
+    """GEF representation of ARC-v2-32 architecture."""
+
     arch = "ARC"
     mode = "32v2"
 
@@ -10529,6 +10880,8 @@ class ARC(Architecture):
 
 
 class ARCv3(ARC):
+    """GEF representation of ARC-v3-32 architecture."""
+
     arch = "ARC"
     mode = "32v3"
 
@@ -10554,6 +10907,8 @@ class ARCv3(ARC):
 
 
 class ARC64(ARCv3):
+    """GEF representation of ARC-v3-64 architecture."""
+
     arch = "ARC"
     mode = "64v3"
 
@@ -10579,6 +10934,8 @@ class ARC64(ARCv3):
 
 
 class CSKY(Architecture):
+    """GEF representation of C-SKY architecture."""
+
     arch = "CSKY"
     mode = "CSKY"
 
@@ -10752,6 +11109,8 @@ class CSKY(Architecture):
 # The prototype for new architecture.
 #
 #class XXX(Architecture):
+#   """GEF representation of XXX architecture."""
+#
 #    arch = "XXX"
 #    mode = "XXX"
 #
@@ -10984,12 +11343,8 @@ def read_int_from_memory(addr):
     return unpack(mem)
 
 
-def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
+def read_cstring_from_memory(addr, max_length=None):
     """Return a C-string read from memory."""
-    # original GEF uses gdb.Value().cast("char"), but this is too slow if string is too large.
-    # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
-    # to avoid this, gdb.Value().cast() is removed.
-
     if max_length is None:
         max_length = Config.get_gef_setting("context.nb_max_string_length")
 
@@ -11016,21 +11371,15 @@ def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
         except gdb.MemoryError:
             break
 
-    # treat as utf-8
+    # check if ascii
     res = res.split(b"\x00")[0]
-    try:
-        ustr = res.decode("utf-8")
-    except UnicodeDecodeError:
-        ustr = String.bytes2str(res)
+    ustr = String.bytes2str(res)
+
+    if ustr and any(x not in String.STRING_PRINTABLE for x in ustr):
+        return None
 
     if len(ustr) > max_length:
         ustr = "{}[...]".format(ustr[:max_length])
-
-    if ascii_only:
-        if ustr and all(x in String.STRING_PRINTABLE for x in ustr):
-            return ustr
-        else:
-            return None
 
     return ustr
 
@@ -11053,7 +11402,7 @@ def read_physmem(paddr, size):
                 disable_phys()
         return None
 
-    def qemu_system_strict_way(paddr, size):
+    def qemu_system_proc_mem(paddr, size):
         qemu_system_pid = Pid.get_pid()
         if qemu_system_pid is None:
             return None
@@ -11089,7 +11438,8 @@ def read_physmem(paddr, size):
             out += bytes([int(x, 16) for x in data])
         return out
 
-    def kgdb_use_mdp(paddr, size): # for kgdb
+    def kgdb_use_mdp(paddr, size):
+        # for kgdb
         # Note: `mdp` command can only handle aligned addresses.
         paddr_aligned = paddr & ~0xf
         read_n_line = (size + (paddr - paddr_aligned) + 15) // 16
@@ -11115,6 +11465,7 @@ def read_physmem(paddr, size):
         return out[paddr & 0xf:][:size]
 
     # ----
+
     if size == 0:
         return b""
 
@@ -11122,7 +11473,7 @@ def read_physmem(paddr, size):
         return None
 
     if is_qemu_system():
-        out = qemu_system_strict_way(paddr, size)
+        out = qemu_system_proc_mem(paddr, size)
         if out:
             return out
         if is_supported_physmode():
@@ -11212,7 +11563,31 @@ def is_valid_addr_addr(addr):
 
 
 @Cache.cache_until_next
-def is_double_link_list(addr):
+def is_single_link_list(addr):
+    # +------+   +------+           +------+
+    # | head |-->| next |--> ... -->| next |--> NULL
+    # +------+   +------+           +------+
+
+    seen = []
+    while True:
+        if addr == 0:
+            return True
+        if addr in seen:
+            return False
+        if not is_valid_addr(addr):
+            return False
+        seen.append(addr)
+        addr = read_int_from_memory(addr)
+
+
+@Cache.cache_until_next
+def is_double_link_list(addr, min_len=0):
+    # +------+<-+   +------+<-+        <-+   +------+<-+   +------+
+    # | head |--|-->| next |--|--> ... --|-->| next |--|-->| head |
+    # +------+  |   +------+  |          |   +------+  |   +------+
+    # | tail |  +---| prev |  +---       +---| prev |  +---| tail |
+    # +------+      +------+                 +------+      +------+
+
     # list up next pointer
     seen = []
     while True:
@@ -11231,10 +11606,14 @@ def is_double_link_list(addr):
         p = read_int_from_memory(x + current_arch.ptrsize)
         if p != seen[i - 1]:
             return False
-    return True
+
+    # minimum length check
+    return len(seen) > min_len
 
 
 class QemuMonitor:
+    """A collection of utility functions that are related to qemu-monitor."""
+
     @staticmethod
     @Cache.cache_this_session
     def get_gic_addrs():
@@ -11463,7 +11842,8 @@ def u128(x):
 def is_ascii_string(addr):
     """Helper function to determine if the buffer pointed by `addr` is an ASCII string (in GDB)"""
     try:
-        return read_cstring_from_memory(addr, ascii_only=True) is not None
+        x = read_cstring_from_memory(addr)
+        return x is not None and len(x) > 0
     except gdb.MemoryError:
         return False
 
@@ -11598,6 +11978,19 @@ def only_if_kvm_disabled(f):
     return wrapper
 
 
+def only_if_smp_disabled(f):
+    """Decorator wrapper to check if there is not -smp N option."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_smp_enabled():
+            err("Disable `-smp N` option for qemu-system.")
+            return
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
 def only_if_specific_gdb_mode(mode=()):
     """Decorator wrapper to check if the gdb mode is specific."""
 
@@ -11662,8 +12055,9 @@ def only_if_specific_arch(arch=()):
                 "x86_32": is_x86_32,
                 "x86_64": is_x86_64,
                 "x86_16": is_x86_16,
-                "ARM64": is_arm64,
                 "ARM32": is_arm32,
+                "ARM32M": is_arm32_cortex_m,
+                "ARM64": is_arm64,
                 "MIPS32": is_mips32,
                 "MIPS64": is_mips64,
                 "MIPSN32": is_mipsn32,
@@ -11711,8 +12105,9 @@ def exclude_specific_arch(arch=()):
                 "x86_32": is_x86_32,
                 "x86_64": is_x86_64,
                 "x86_16": is_x86_16,
-                "ARM64": is_arm64,
                 "ARM32": is_arm32,
+                "ARM32M": is_arm32_cortex_m,
+                "ARM64": is_arm64,
                 "MIPS32": is_mips32,
                 "MIPS64": is_mips64,
                 "MIPSN32": is_mipsn32,
@@ -12035,6 +12430,11 @@ def is_in_kernel():
         if cpsr is None:
             return False
         return ((cpsr >> 2) & 0b11) == 1
+    elif is_riscv64() or is_riscv32():
+        priv = get_register("priv")
+        if priv is None:
+            return False
+        return priv == 1
     # All other architectures are considered userland.
     return False
 
@@ -12049,7 +12449,19 @@ def is_kvm_enabled():
         return False
 
 
+@Cache.cache_this_session
+def is_smp_enabled():
+    """GDB mode determination function for smp."""
+    try:
+        res = gdb.execute("monitor info cpus", to_string=True)
+        return len(res.splitlines()) >= 2
+    except gdb.error:
+        return False
+
+
 class Pid:
+    """A collection of utility functions that obtains a pid."""
+
     @staticmethod
     def get_tcp_sess(pid):
         # get inode information from opened file descriptor
@@ -12171,6 +12583,8 @@ class Pid:
 
 
 class Path:
+    """A collection of utility functions that obtains a path."""
+
     @staticmethod
     def append_proc_root(filepath):
         if filepath is None:
@@ -12240,7 +12654,7 @@ class Path:
     def read_remote_file(filepath, as_byte=True):
         tmp_name = os.path.join(GEF_TEMP_DIR, "read_remote_file.tmp")
         try:
-            gdb.execute("remote get {:s} {:s}".format(filepath, tmp_name), to_string=True)
+            gdb.execute("remote get {!r} {!r}".format(filepath, tmp_name), to_string=True)
         except gdb.error:
             return ""
         if as_byte:
@@ -12252,6 +12666,8 @@ class Path:
 
 
 class ProcessMap:
+    """A collection of utility functions that obtains a process map."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_process_maps_linux(pid, remote=False):
@@ -12272,6 +12688,7 @@ class ProcessMap:
         if is_x86():
             tls_list = []
             orig_thread = gdb.selected_thread()
+            orig_frame = gdb.selected_frame()
             if orig_thread: # orig_thread may be None if under winedbg
                 for thread in gdb.selected_inferior().threads():
                     thread.switch() # change thread
@@ -12279,6 +12696,7 @@ class ProcessMap:
                     tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
                     tls_list.append([thread.num, tls, current_arch.sp])
                 orig_thread.switch() # revert thread
+                orig_frame.select()
                 extra_info = sorted(tls_list)
 
                 # When using gdbserver, thread.num may start from 2 even though there is no thread.
@@ -12324,7 +12742,7 @@ class ProcessMap:
     @staticmethod
     @Cache.cache_this_session
     def get_explored_regions():
-        """Return sections from auxv exploring"""
+        """Return sections from auxv exploring."""
 
         if current_arch is None:
             return []
@@ -12625,6 +13043,8 @@ class ProcessMap:
                     new_regions += make_regions(addr, "<explored>")
             return new_regions
 
+        # ----
+
         regions = []
         regions += parse_auxv()
         regions += parse_stack_register()
@@ -12705,7 +13125,7 @@ class ProcessMap:
     @staticmethod
     @Cache.cache_until_next
     def get_process_maps(outer=False):
-        """Return the mapped memory sections"""
+        """Return the mapped memory sections."""
         if is_qemu_user():
             if outer:
                 pid = Pid.get_pid()
@@ -12803,7 +13223,7 @@ class ProcessMap:
             err("Process is not running")
             return None
         if isinstance(names, str):
-            names = tuple([names]) # make tuple to iterate
+            names = (names,) # make tuple to iterate
         for sect in ProcessMap.get_process_maps():
             for name in names:
                 if name in sect.path and sect.permission.value & perm_mask:
@@ -12858,6 +13278,8 @@ class ProcessMap:
 
 
 class EventHandler:
+    """A collection of handler functions that are called when the specified events occur."""
+
     @staticmethod
     def continue_handler(_event):
         """GDB event handler for new object continue cases."""
@@ -12907,7 +13329,7 @@ class EventHandler:
 
         # If the silent command is specified for a breakpoint, skip `context` command.
         context_flag = True
-        if type(event) == gdb.BreakpointEvent:
+        if isinstance(event, gdb.BreakpointEvent):
             if event.breakpoint.is_valid() and event.breakpoint.enabled:
                 if event.breakpoint.commands:
                     if event.breakpoint.commands.startswith("silent"):
@@ -12963,6 +13385,8 @@ class EventHandler:
 
 
 class UnicornKeystoneCapstone:
+    """A collection of utility functions that are related to unicorn, keystone, and capstone."""
+
     @staticmethod
     def get_generic_arch(module, prefix, arch, mode, big_endian, to_string):
         """Retrieves architecture and mode from the arguments for use for the holy
@@ -13005,6 +13429,8 @@ class UnicornKeystoneCapstone:
             arch = current_arch.arch
             mode = current_arch.mode
             endian = Endian.is_big_endian()
+        if arch is None:
+            arch = current_arch.arch
         if (arch, mode) == ("RISCV", "32"):
             mode = "RISCV32"
         elif (arch, mode) == ("RISCV", "64"):
@@ -13036,6 +13462,8 @@ class UnicornKeystoneCapstone:
             arch = current_arch.arch
             mode = current_arch.mode
             endian = Endian.is_big_endian()
+        if arch is None:
+            arch = current_arch.arch
         # hacky patch for applying to capstone's mode
         if (arch, mode) == ("RISCV", "32"):
             mode = ("RISCV32", "RISCVC")
@@ -13064,6 +13492,8 @@ class UnicornKeystoneCapstone:
             arch = current_arch.arch
             mode = current_arch.mode
             endian = Endian.is_big_endian()
+        if arch is None:
+            arch = current_arch.arch
         # hacky patch for applying to capstone's mode
         if arch == "ARM64":
             mode = None
@@ -13215,8 +13645,13 @@ def is_x86():
 
 
 def is_arm32():
-    """Architecture determination function for ARM 32 bit."""
-    return current_arch and current_arch.arch == "ARM"
+    """Architecture determination function for ARM 32 bit (Cortex-A)."""
+    return current_arch and current_arch.arch == "ARM" and not current_arch.is_cortex_m()
+
+
+def is_arm32_cortex_m():
+    """Architecture determination function for ARM 32 bit (Cortex-M)."""
+    return current_arch and current_arch.arch == "ARM" and current_arch.is_cortex_m()
 
 
 def is_arm64():
@@ -13436,9 +13871,11 @@ def set_arch(arch_str=None):
 
 
 class Auxv:
+    """A collection of utility functions that are related to ELF Auxiliary Vectors."""
+
     @staticmethod
     def get_auxiliary_walk(offset=0):
-        """Find AUXV by walking stack"""
+        """Find AUXV by walking stack."""
 
         # do not use gef_getpagesize(), gef_getpagesize_mask_high(), etc.
         # because gef_getpagesize() -> Auxv.get_auxiliary_values() -> Auxv.get_auxiliary_walk()
@@ -13553,6 +13990,8 @@ class Auxv:
                     return res
             return None
 
+        # ----
+
         if force_heuristic:
             return slow_path()
 
@@ -13600,6 +14039,8 @@ def only_if_events_supported(event_type):
 
 
 class EventHooking:
+    """A collection of utility functions that hook up specified events."""
+
     @staticmethod
     @only_if_events_supported("cont")
     def gef_on_continue_hook(func):
@@ -13683,6 +14124,7 @@ def register_priority_command(cls):
 
 class GenericCommand(gdb.Command):
     """This is an abstract class for invoking commands, should not be instantiated."""
+
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractproperty
@@ -13814,6 +14256,9 @@ class GenericCommand(gdb.Command):
         # add
         key = "{:s}.{:s}".format(class_name, name)
         Config.__gef_config__[key] = [value, type(value), description]
+        Config.__gef_config_orig__[key] = [value, type(value), description] # for debugging
+
+        # reset cache
         Cache.reset_gef_caches(function=Config.get_gef_setting)
         return
 
@@ -13831,6 +14276,8 @@ class GenericCommand(gdb.Command):
 
 
 class BufferingOutput:
+    """A collection of utility functions that append a messages to self.out."""
+
     def ok(self, msg):
         msg = "{} {}".format(Color.colorify("[+]", "bold green"), msg)
         self.out.append(msg)
@@ -13866,6 +14313,7 @@ class BufferingOutput:
 # @register_command
 # class TemplateCommand(GenericCommand):
 #     """TemplateCommand: description here will be seen in the help menu for the command."""
+#
 #     _cmdline_ = "template-fake"
 #     _category_ = "99. GEF Maintenance Command"
 #     _aliases_ = ["tpl-fk"]
@@ -13888,12 +14336,12 @@ class BufferingOutput:
 @register_command
 class ResetCacheCommand(GenericCommand):
     """Reset all caches (both Cache.cache_until_next and Cache.cache_this_session)."""
+
     _cmdline_ = "reset-cache"
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--hard", action="store_true",
-                        help="also delete under {:s}.".format(GEF_TEMP_DIR))
+    parser.add_argument("--hard", action="store_true", help="also delete under {:s}.".format(GEF_TEMP_DIR))
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -13916,12 +14364,12 @@ class ResetCacheCommand(GenericCommand):
 @register_command
 class ResetBreakpointsCommand(GenericCommand):
     """Show and reset all breakpoints (include internal breakpoints)."""
+
     _cmdline_ = "reset-bp"
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-c", "--commit", action="store_true",
-                        help="actually perform delete.")
+    parser.add_argument("-c", "--commit", action="store_true", help="actually perform delete.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -13945,6 +14393,7 @@ class ResetBreakpointsCommand(GenericCommand):
 @register_priority_command
 class GefThemeCommand(GenericCommand):
     """Customize GEF appearance."""
+
     _cmdline_ = "theme"
     _category_ = "99. GEF Maintenance Command"
 
@@ -14071,13 +14520,14 @@ class GefThemeCommand(GenericCommand):
 
         # set
         val = [x for x in args.value if x in Color.colors]
-        gdb.execute("gef config theme.{:s} '{:s}'".format(args.key, " ".join(val)))
+        gdb.execute("gef config theme.{:s} {!r}".format(args.key, " ".join(val)))
         return
 
 
 @register_command
 class VersionCommand(GenericCommand):
     """Display GEF version info."""
+
     _cmdline_ = "version"
     _category_ = "99. GEF Maintenance Command"
 
@@ -14310,6 +14760,7 @@ class VersionCommand(GenericCommand):
 @register_command
 class HighlightCommand(GenericCommand):
     """The base command to highlight user defined text matches which modifies GEF output universally."""
+
     _cmdline_ = "highlight"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -14369,6 +14820,7 @@ class HighlightCommand(GenericCommand):
 @register_command
 class HighlightListCommand(GenericCommand):
     """Display the current highlight table with matches to colors."""
+
     _cmdline_ = "highlight list"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight ls"]
@@ -14399,6 +14851,7 @@ class HighlightListCommand(GenericCommand):
 @register_command
 class HighlightClearCommand(GenericCommand):
     """Clear the highlight table, remove all matches."""
+
     _cmdline_ = "highlight clear"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight reset"]
@@ -14415,6 +14868,7 @@ class HighlightClearCommand(GenericCommand):
 @register_command
 class HighlightAddCommand(GenericCommand):
     """Add a match to the highlight table."""
+
     _cmdline_ = "highlight add"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight set"]
@@ -14437,6 +14891,7 @@ class HighlightAddCommand(GenericCommand):
 @register_command
 class HighlightRemoveCommand(GenericCommand):
     """Remove a match in the highlight table."""
+
     _cmdline_ = "highlight remove"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
@@ -14455,6 +14910,7 @@ class HighlightRemoveCommand(GenericCommand):
 
 class SimpleInternalTemporaryBreakpoint(gdb.Breakpoint):
     """A simple wrapper that takes into account the bug where temporary breakpoints isn't deleted after it is hit."""
+
     def __init__(self, loc):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
@@ -14469,6 +14925,7 @@ class SimpleInternalTemporaryBreakpoint(gdb.Breakpoint):
 
 class SecondBreakpoint(gdb.Breakpoint):
     """Breakpoint which sets a 2nd breakpoint, when hit."""
+
     def __init__(self, loc, second_loc):
         self.second_loc = second_loc
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
@@ -14485,9 +14942,8 @@ class SecondBreakpoint(gdb.Breakpoint):
 
 @register_command
 class NiCommand(GenericCommand):
-    """`ni` wrapper for specific arch.
-    or1k: branch operations don't work well, so use breakpoints to simulate.
-    cris: si/ni commands don't work well. so use breakpoints to simulate."""
+    """`ni` wrapper for specific arch (or1k, cris)."""
+
     _cmdline_ = "nexti-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14497,7 +14953,11 @@ class NiCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _note_ = "Only when qemu-user with specific arch, the `ni` command is redirected to `nexti-for-qemu-user`.\n"
-    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time."
+    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time.\n"
+    _note_ += "\n"
+    _note_ += "Target architecture:\n"
+    _note_ += "  or1k: branch operations don't work well, so use breakpoints to simulate.\n"
+    _note_ += "  cris: si/ni commands don't work well. so use breakpoints to simulate."
 
     def ni_set_bp_for_branch(self):
         target = None
@@ -14568,9 +15028,8 @@ class NiCommand(GenericCommand):
 
 @register_command
 class SiCommand(GenericCommand):
-    """`si` wrapper for specific arch.
-    or1k: branch operations don't work well, so use breakpoints to simulate.
-    cris: si/ni commands don't work well. so use breakpoints to simulate."""
+    """`si` wrapper for specific arch (or1k, cris)."""
+
     _cmdline_ = "stepi-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14580,7 +15039,11 @@ class SiCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _note_ = "Only when qemu-user with specific arch, the `si` command is redirected to `stepi-for-qemu-user`.\n"
-    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time."
+    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time.\n"
+    _note_ += "\n"
+    _note_ += "Target architecture:\n"
+    _note_ += "  or1k: branch operations don't work well, so use breakpoints to simulate.\n"
+    _note_ += "  cris: si/ni commands don't work well. so use breakpoints to simulate."
 
     def si_set_bp_for_branch(self):
         target = None
@@ -14652,6 +15115,7 @@ class SiCommand(GenericCommand):
 @register_command
 class ContCommand(GenericCommand):
     """`c` wrapper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or Intel Pin."""
+
     _cmdline_ = "continue-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14731,6 +15195,7 @@ class ContCommand(GenericCommand):
 @register_command
 class UpCommand(GenericCommand):
     """`up` wrapper."""
+
     _cmdline_ = "up"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14781,6 +15246,7 @@ class UpCommand(GenericCommand):
 @register_command
 class DownCommand(GenericCommand):
     """`down` wrapper."""
+
     _cmdline_ = "down"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14831,6 +15297,7 @@ class DownCommand(GenericCommand):
 @register_command
 class DisplayTypeCommand(GenericCommand, BufferingOutput):
     """Makes it easier to use `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`."""
+
     _cmdline_ = "dt"
     _category_ = "02-h. Process Information - Type"
 
@@ -14864,7 +15331,7 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
     def do_invoke(self, args):
         # lookup type
         tp = GefUtil.cached_lookup_type(args.type)
-        if not args.type.startswith(("struct", "union",  "enum")):
+        if not args.type.startswith(("struct", "union", "enum")):
             if tp is None:
                 tp = GefUtil.cached_lookup_type("struct {:s}".format(args.type))
             if tp is None:
@@ -14950,6 +15417,7 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
 @register_command
 class BreakRelativeVirtualAddressCommand(GenericCommand):
     """Set a breakpoint at relative offset from codebase."""
+
     _cmdline_ = "break-rva"
     _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["brva"]
@@ -14992,6 +15460,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
 @register_command
 class PrintFormatCommand(GenericCommand):
     """Print bytes format in high level languages."""
+
     _cmdline_ = "print-format"
     _category_ = "09-c. Misc - Generation"
     _aliases_ = ["pf"]
@@ -15079,6 +15548,7 @@ class PrintFormatCommand(GenericCommand):
 @register_command
 class CanaryCommand(GenericCommand):
     """Display the canary value of the current process from auxv information."""
+
     _cmdline_ = "canary"
     _category_ = "02-f. Process Information - Security"
 
@@ -15155,6 +15625,7 @@ class CanaryCommand(GenericCommand):
 @register_command
 class AuxvCommand(GenericCommand):
     """Display ELF auxiliary vectors."""
+
     _cmdline_ = "auxv"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15265,6 +15736,7 @@ class AuxvCommand(GenericCommand):
 @register_command
 class ArgvCommand(GenericCommand, BufferingOutput):
     """Display argv."""
+
     _cmdline_ = "argv"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15373,6 +15845,7 @@ class ArgvCommand(GenericCommand, BufferingOutput):
 @register_command
 class EnvpCommand(GenericCommand, BufferingOutput):
     """Display initial envp from __environ@ld, or modified envp from last_environ@libc."""
+
     _cmdline_ = "envp"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15486,6 +15959,7 @@ class EnvpCommand(GenericCommand, BufferingOutput):
 @register_command
 class DumpArgsCommand(GenericCommand):
     """Dump arguments of current function."""
+
     _cmdline_ = "dumpargs"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["args"]
@@ -15523,6 +15997,7 @@ class DumpArgsCommand(GenericCommand):
 @register_command
 class VdsoCommand(GenericCommand, BufferingOutput):
     """Disassemble the text area of vdso smartly."""
+
     _cmdline_ = "vdso"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15581,6 +16056,7 @@ class VdsoCommand(GenericCommand, BufferingOutput):
 @register_command
 class VvarCommand(GenericCommand):
     """Dump the area of vvar (only x64/x86)."""
+
     _cmdline_ = "vvar"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15638,6 +16114,7 @@ class VvarCommand(GenericCommand):
 @register_command
 class IouringDumpCommand(GenericCommand):
     """Dump the area of iouring (only x64)."""
+
     _cmdline_ = "iouring-dump"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -15694,6 +16171,7 @@ class IouringDumpCommand(GenericCommand):
 @register_command
 class PidCommand(GenericCommand):
     """Display the local PID or remote PID."""
+
     _cmdline_ = "pid"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["getpid"]
@@ -15725,6 +16203,7 @@ class PidCommand(GenericCommand):
 @register_command
 class TidCommand(GenericCommand):
     """Display the Thread ID."""
+
     _cmdline_ = "tid"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["gettid"]
@@ -15744,6 +16223,7 @@ class TidCommand(GenericCommand):
 @register_command
 class FilenameCommand(GenericCommand):
     """Display current debugged filename."""
+
     _cmdline_ = "filename"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["getfile"]
@@ -15774,6 +16254,7 @@ class FilenameCommand(GenericCommand):
 @register_command
 class ProcInfoCommand(GenericCommand):
     """Extend the info given by GDB `info proc`."""
+
     _cmdline_ = "proc-info"
     _category_ = "02-a. Process Information - General"
     _aliases_ = ["pr"]
@@ -16128,6 +16609,7 @@ class ProcInfoCommand(GenericCommand):
 @register_command
 class FileDescriptorsCommand(GenericCommand):
     """Show opened file descriptors."""
+
     _cmdline_ = "fds"
     _category_ = "02-a. Process Information - General"
 
@@ -16157,6 +16639,7 @@ class FileDescriptorsCommand(GenericCommand):
 @register_command
 class ProcDumpCommand(GenericCommand):
     """Dump each file under `/proc/PID`."""
+
     _cmdline_ = "proc-dump"
     _category_ = "02-a. Process Information - General"
 
@@ -16410,6 +16893,7 @@ class ProcDumpCommand(GenericCommand):
 @register_command
 class CapabilityCommand(GenericCommand):
     """Display the capabilities of the debugging process."""
+
     _cmdline_ = "capability"
     _category_ = "02-f. Process Information - Security"
 
@@ -16596,6 +17080,7 @@ class CapabilityCommand(GenericCommand):
 @register_command
 class SmartMemoryDumpCommand(GenericCommand):
     """Dump the memory of the entire process smartly."""
+
     _cmdline_ = "smart-memory-dump"
     _category_ = "03-e. Memory - Dump"
 
@@ -16687,6 +17172,7 @@ class SmartMemoryDumpCommand(GenericCommand):
 @register_command
 class HijackFdCommand(GenericCommand):
     """Redirect the file descriptor during runtime."""
+
     _cmdline_ = "hijack-fd"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -16869,6 +17355,7 @@ class HijackFdCommand(GenericCommand):
 @register_command
 class ScanSectionCommand(GenericCommand):
     """Search for addresses located in a memory mapping (haystack) that belonging to another (needle)."""
+
     _cmdline_ = "scan-section"
     _category_ = "03-a. Memory - Search"
 
@@ -16956,6 +17443,7 @@ class ScanSectionCommand(GenericCommand):
 @register_command
 class SearchPatternCommand(GenericCommand):
     """Search a pattern in memory."""
+
     _cmdline_ = "search-pattern"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["find", "grep"]
@@ -17286,6 +17774,7 @@ class SearchPatternCommand(GenericCommand):
 @register_command
 class PtrDemangleCommand(GenericCommand):
     """Demangle a mangled value by PTR_MANGLE."""
+
     _cmdline_ = "ptr-demangle"
     _category_ = "02-f. Process Information - Security"
 
@@ -17365,6 +17854,7 @@ class PtrDemangleCommand(GenericCommand):
 @register_command
 class PtrMangleCommand(GenericCommand):
     """Mangle a mangled value by PTR_MANGLE."""
+
     _cmdline_ = "ptr-mangle"
     _category_ = "02-f. Process Information - Security"
 
@@ -17399,6 +17889,7 @@ class PtrMangleCommand(GenericCommand):
 @register_command
 class SearchMangledPtrCommand(GenericCommand):
     """Search mangled values from RW memory."""
+
     _cmdline_ = "search-mangled-ptr"
     _category_ = "02-f. Process Information - Security"
     _aliases_ = ["cookie"]
@@ -17518,6 +18009,7 @@ class SearchMangledPtrCommand(GenericCommand):
 @register_command
 class SearchCfiGadgetsCommand(GenericCommand):
     """Search CFI-valid and controllable generally gadgets from executable area."""
+
     _cmdline_ = "search-cfi-gadgets"
     _category_ = "03-a. Memory - Search"
 
@@ -17631,6 +18123,7 @@ class SearchCfiGadgetsCommand(GenericCommand):
 @register_command
 class EditFlagsCommand(GenericCommand):
     """Edit flags in a human friendly way."""
+
     _cmdline_ = "edit-flags"
     _category_ = "04-b. Register - Modify"
 
@@ -17698,20 +18191,9 @@ class EditFlagsCommand(GenericCommand):
                 gdb.execute("set ({:s}) = {:#x}".format(current_arch.flag_register, new_flags))
         return
 
-    def bits_split(self, x, bits=32):
-        out = ""
-        for i in range(bits):
-            if x & (1 << i):
-                out = "1" + out
-            else:
-                out = "0" + out
-            if i % 4 == 3:
-                out = "_" + out
-        return "0b" + out[1:]
-
     def verbose_x86(self):
         eflags = get_register("$eflags")
-        gef_print("{:s}  {:s}".format(self.bits_split(eflags), Color.colorify("MASK", "bold")))
+        gef_print("{:s}  {:s}".format(BitInfo.bits_split(eflags, 32), Color.colorify("MASK", "bold")))
 
         def c(msg):
             mask = int(msg.split()[0], 16)
@@ -17754,7 +18236,7 @@ class EditFlagsCommand(GenericCommand):
 
     def verbose_arm32(self):
         cpsr = get_register("$cpsr")
-        gef_print("{:s}  {:s}".format(self.bits_split(cpsr), Color.colorify("MASK", "bold")))
+        gef_print("{:s}  {:s}".format(BitInfo.bits_split(cpsr, 32), Color.colorify("MASK", "bold")))
 
         def c(msg):
             mask = int(msg.split()[0], 16)
@@ -17795,7 +18277,7 @@ class EditFlagsCommand(GenericCommand):
 
     def verbose_arm64(self):
         cpsr = get_register("$cpsr")
-        gef_print("{:s}  {:s}".format(self.bits_split(cpsr), Color.colorify("MASK", "bold")))
+        gef_print("{:s}  {:s}".format(BitInfo.bits_split(cpsr, 32), Color.colorify("MASK", "bold")))
 
         def c(msg):
             mask = int(msg.split()[0], 16)
@@ -17892,6 +18374,7 @@ class EditFlagsCommand(GenericCommand):
 
 class MprotectBreakpoint(gdb.Breakpoint):
     """When hit, this temporary breakpoint will restore the original code, and position $pc correctly."""
+
     def __init__(self, loc, code, pc, regs):
         super().__init__(loc, gdb.BP_BREAKPOINT, internal=True, temporary=True)
         self.original_code = code
@@ -17917,6 +18400,7 @@ class MprotectBreakpoint(gdb.Breakpoint):
 @register_command
 class MprotectCommand(GenericCommand):
     """Change a page permission (default: RWX)."""
+
     _cmdline_ = "mprotect"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18014,6 +18498,7 @@ class MprotectCommand(GenericCommand):
 @register_command
 class KillThreadsCommand(GenericCommand):
     """Invoke pthread_exit(0) for specific THREAD_ID."""
+
     _cmdline_ = "killthreads"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18076,6 +18561,7 @@ class KillThreadsCommand(GenericCommand):
 @register_command
 class CallSyscallCommand(GenericCommand):
     """A wrapper for calling syscall easily."""
+
     _cmdline_ = "call-syscall"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18136,6 +18622,7 @@ class CallSyscallCommand(GenericCommand):
 @register_command
 class MmapMemoryCommand(GenericCommand):
     """Allocate a new memory."""
+
     _cmdline_ = "mmap"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18219,6 +18706,7 @@ class MmapMemoryCommand(GenericCommand):
 @register_command
 class ReadControlRegisterCommand(GenericCommand):
     """Read control register for kgdb."""
+
     _cmdline_ = "read-control-register"
     _category_ = "04-a. Register - View"
 
@@ -18287,6 +18775,7 @@ class ReadControlRegisterCommand(GenericCommand):
 @register_command
 class ReadSystemRegisterCommand(GenericCommand):
     """Read system register for old qemu-system-arm."""
+
     _cmdline_ = "read-system-register"
     _category_ = "04-a. Register - View"
 
@@ -18983,6 +19472,7 @@ class ReadSystemRegisterCommand(GenericCommand):
 @register_command
 class UnicornEmulateCommand(GenericCommand):
     """Use Unicorn-Engine to emulate the behavior of the binary."""
+
     _cmdline_ = "unicorn-emulate"
     _category_ = "01-d. Debugging Support - Execution"
     _aliases_ = ["emulate"]
@@ -19110,10 +19600,18 @@ class UnicornEmulateCommand(GenericCommand):
         content += "def code_hook(emu, address, size, user_data):\n"
         content += "    global count\n"
         content += "    if not quiet:\n"
-        # min() is the workaround since unicorn passes 0xf1f1f1f1 as size if opcode is unsupported.
-        # The execution will be failed, but the information of the error message increases.
-        content += "        code = emu.mem_read(address, min(size, 0x10))\n"
-        content += "        insn = disassemble(code, address)\n"
+        # unicorn passes 0xf1f1f1f1 as size if opcode is unsupported.
+        # this causes memory read error, so we need to fix the size.
+        content += "        if size >= 0x40:\n"
+        content += "            size = 0x10\n"
+        # from unicorn 2.1.0, size as 4 if opcode is unsupported.
+        content += "        for i in range(10):\n"
+        content += "            code = emu.mem_read(address, size + i)\n"
+        content += "            insn = disassemble(code, address)\n"
+        content += "            if insn:\n"
+        content += "                break\n"
+        content += "        else:\n"
+        content += "            raise\n"
         content += "        code_hex = code[:insn.size].hex()\n"
         content += "        if verbose:\n"
         content += "            print_regs(emu, registers)\n"
@@ -19429,6 +19927,7 @@ class UnicornEmulateCommand(GenericCommand):
 
 class StubBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to permanently disable a call (fork/alarm/signal/etc.)."""
+
     def __init__(self, func, retval):
         super().__init__(func, gdb.BP_BREAKPOINT, internal=False)
         self.func = func
@@ -19451,6 +19950,7 @@ class StubBreakpoint(gdb.Breakpoint):
 @register_command
 class StubCommand(GenericCommand):
     """Stub out the specified function to skip it. (e.g.: fork)"""
+
     _cmdline_ = "stub"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["deactivate"]
@@ -19479,6 +19979,7 @@ class StubCommand(GenericCommand):
 @register_command
 class CapstoneDisassembleCommand(GenericCommand):
     """Use capstone disassembly framework to disassemble code."""
+
     _cmdline_ = "capstone-disassemble"
     _category_ = "01-e. Debugging Support - Assemble"
     _repeat_ = True
@@ -19550,6 +20051,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 @register_command
 class GlibcHeapCommand(GenericCommand):
     """The base command to get information about the Glibc heap structure."""
+
     _cmdline_ = "heap"
     _category_ = "06-a. Heap - Glibc"
 
@@ -19561,6 +20063,7 @@ class GlibcHeapCommand(GenericCommand):
     subparsers.add_parser("arena")
     subparsers.add_parser("arenas")
     subparsers.add_parser("bins")
+    subparsers.add_parser("bins-simple")
     subparsers.add_parser("chunk")
     subparsers.add_parser("chunks")
     subparsers.add_parser("top")
@@ -19581,6 +20084,7 @@ class GlibcHeapCommand(GenericCommand):
 @register_command
 class GlibcHeapTopCommand(GenericCommand):
     """Display heap top chunk."""
+
     _cmdline_ = "heap top"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["top-chunk"]
@@ -19626,6 +20130,7 @@ class GlibcHeapTopCommand(GenericCommand):
 @register_command
 class GlibcHeapArenasCommand(GenericCommand):
     """List up heap arenas."""
+
     _cmdline_ = "heap arenas"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["arenas"]
@@ -19660,6 +20165,7 @@ class GlibcHeapArenasCommand(GenericCommand):
 @register_command
 class GlibcHeapArenaCommand(GenericCommand, BufferingOutput):
     """Display information on a heap arena."""
+
     _cmdline_ = "heap arena"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["arena"]
@@ -19812,6 +20318,7 @@ class GlibcHeapArenaCommand(GenericCommand, BufferingOutput):
 @register_command
 class GlibcHeapChunkCommand(GenericCommand):
     """Display information on a heap chunk."""
+
     _cmdline_ = "heap chunk"
     _category_ = "06-a. Heap - Glibc"
 
@@ -19874,6 +20381,7 @@ class GlibcHeapChunkCommand(GenericCommand):
 @register_command
 class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
     """Display information all heap chunks."""
+
     _cmdline_ = "heap chunks"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["chunks"]
@@ -19891,7 +20399,21 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x7ffff0000020".format(_cmdline_)
+    _example_ += "{:s} -a 0x7ffff0000020\n".format(_cmdline_)
+    _example_ += "{:s} -a 1".format(_cmdline_)
+
+    _note_ = "about the annotation:\n"
+    _note_ += '  - "tcache[idx=7,sz=0x90][1/2]"\n'
+    _note_ += "    - idx: 0-origin index.\n"
+    _note_ += "    - sz : the size of the chunk including metadata.\n"
+    _note_ += "    - 1/ : a posision in the free-list.\n"
+    _note_ += "    -  /2: parsed free-list length including corrupted chunks.\n"
+    _note_ += "           NOT the value of tcache_perthread_struct.count[idx], be careful!\n"
+    _note_ += '  - "largebins[idx=98,sz=0x1000-0x1200][8/8]"\n'
+    _note_ += "    - idx: 0-origin index that `i-th idx` means `bins[i*2 : (i+1)*2]`.\n"
+    _note_ += "    - sz : the size range of the chunk including metadata.\n"
+    _note_ += "    - 8/ : a posision in the free-list. largebins are FIFO, so the last chunk will be used first.\n"
+    _note_ += "    -  /8: parsed free-list length including corrupted chunks."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -19998,8 +20520,95 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
 
 
 @register_command
+class GlibcHeapBinsSimpleCommand(GenericCommand):
+    """Simple display information on the bins on an arena."""
+
+    _cmdline_ = "heap bins-simple"
+    _category_ = "06-a. Heap - Glibc"
+    _aliases_ = ["bs"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
+                        help="the address or number to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
+    parser.add_argument("--all", action="store_true", help="dump all arenas.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} -a 0x7ffff0000020 -v\n".format(_cmdline_)
+    _example_ += "{:s} -a 1 -v".format(_cmdline_)
+
+    def __init__(self):
+        super().__init__(prefix=True)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        # parse arena
+        arena = GlibcHeap.get_arena(args.arena_addr)
+
+        if arena is None:
+            err("No valid arena")
+            return
+
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
+            err("Heap is not initialized")
+            return
+
+        if args.all:
+            arenas = GlibcHeap.get_all_arenas()
+        else:
+            arenas = [arena]
+
+        # doit
+        for arena in arenas:
+            gef_print(titlify("tcache"))
+            for i, chunks in arena.tcache_list().items():
+                m = ["{!s}{:s}".format(ProcessMap.lookup_address(c), Symbol.get_symbol_string(c)) for c in chunks]
+                if m or args.verbose:
+                    size = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
+                    tcache_perthread_struct = arena.heap_base + 0x10
+                    if get_libc_version() < (2, 30):
+                        count = ord(read_memory(tcache_perthread_struct + i, 1))
+                    else:
+                        count = u16(read_memory(tcache_perthread_struct + 2 * i, 2))
+                    gef_print("{:#x} [{:d}]: ".format(size, count) + RIGHT_ARROW.join(m))
+
+            gef_print(titlify("fastbins"))
+            for i, chunks in arena.fastbins_list().items():
+                m = ["{!s}{:s}".format(ProcessMap.lookup_address(c), Symbol.get_symbol_string(c)) for c in chunks]
+                if m or args.verbose:
+                    size = GlibcHeap.get_binsize_table()["fastbins"][i]["size"]
+                    gef_print("{:#x}: ".format(size) + RIGHT_ARROW.join(m))
+
+            gef_print(titlify("unsorted bin"))
+            for _, chunks in arena.unsortedbin_list().items():
+                m = ["{!s}{:s}".format(ProcessMap.lookup_address(c), Symbol.get_symbol_string(c)) for c in chunks]
+                if m or args.verbose:
+                    gef_print("any: " + RIGHT_ARROW.join(m))
+
+            gef_print(titlify("small bins"))
+            for i, chunks in arena.smallbins_list().items():
+                m = ["{!s}{:s}".format(ProcessMap.lookup_address(c), Symbol.get_symbol_string(c)) for c in chunks]
+                if m or args.verbose:
+                    size = GlibcHeap.get_binsize_table()["small_bins"][i]["size"]
+                    gef_print("{:#x}: ".format(size) + RIGHT_ARROW.join(m))
+
+            gef_print(titlify("large bins"))
+            for i, chunks in arena.largebins_list().items():
+                m = ["{!s}{:s}".format(ProcessMap.lookup_address(c), Symbol.get_symbol_string(c)) for c in chunks]
+                if m or args.verbose:
+                    size_min = GlibcHeap.get_binsize_table()["large_bins"][i]["size_min"]
+                    size_max = GlibcHeap.get_binsize_table()["large_bins"][i]["size_max"]
+                    gef_print("{:#x}-{:#x}: ".format(size_min, size_max) + RIGHT_ARROW.join(m))
+        return
+
+@register_command
 class GlibcHeapBinsCommand(GenericCommand):
-    """Display information on the bins on an arena (default: main_arena)."""
+    """Display information on the bins on an arena."""
+
     _cmdline_ = "heap bins"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["bins"]
@@ -20012,7 +20621,8 @@ class GlibcHeapBinsCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x7ffff0000020 -v".format(_cmdline_)
+    _example_ += "{:s} -a 0x7ffff0000020 -v\n".format(_cmdline_)
+    _example_ += "{:s} -a 1 -v".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=True)
@@ -20043,38 +20653,73 @@ class GlibcHeapBinsCommand(GenericCommand):
         else:
             size_str = "any"
 
-        m = []
-        bins_addr = ProcessMap.lookup_address(bins_addr)
-        fw_ = ProcessMap.lookup_address(fw)
-        bk_ = ProcessMap.lookup_address(bk)
-        m.append("{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}".format(
-            bin_name, index, size_str, bins_addr, fw_, bk_,
-        ))
         corrupted_msg_color = Config.get_gef_setting("theme.heap_corrupted_msg")
+        corrupted = False
 
-        seen = []
+        # follow the link backward
+        mb = []
+        seen_bk = []
         nb_chunk = 0
-        while fw != head:
-            chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
-            if chunk.address in seen:
-                m.append(Color.colorify(
+        while bk != head:
+            chunk = GlibcHeap.GlibcChunk(bk, from_base=True)
+            if chunk.address in seen_bk:
+                mb.append(Color.colorify(
                     "{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.chunk_base_address),
                     corrupted_msg_color,
                 ))
+                corrupted = True
                 break
-            seen.append(chunk.address)
+            seen_bk.append(chunk.address)
             try:
-                m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
+                mb.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
             except gdb.MemoryError:
-                m.append(Color.colorify(
-                    "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                mb.append(Color.colorify(
+                    "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
                     corrupted_msg_color,
                 ))
+                corrupted = True
                 break
-            fw = chunk.fwd
+            bk = chunk.bck
             nb_chunk += 1
-        if m:
-            gef_print("\n".join(m))
+
+        if corrupted:
+            # follow the link forward
+            mf = []
+            seen_fw = []
+            while fw != head:
+                chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
+                if chunk.address in seen_bk:
+                    break
+                if chunk.address in seen_fw:
+                    mf.append(Color.colorify(
+                        "{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                        corrupted_msg_color,
+                    ))
+                    break
+                seen_fw.append(chunk.address)
+                try:
+                    mf.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
+                except gdb.MemoryError:
+                    mf.append(Color.colorify(
+                        "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                        corrupted_msg_color,
+                    ))
+                    break
+                fw = chunk.fwd
+
+        # concat
+        m = []
+        m.append("{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}".format(
+            bin_name, index, size_str,
+            ProcessMap.lookup_address(bins_addr),
+            ProcessMap.lookup_address(fw),
+            ProcessMap.lookup_address(bk),
+        ))
+        if corrupted and mf:
+            m += mf
+        m += mb[::-1]
+
+        gef_print("\n".join(m))
         return nb_chunk
 
     @parse_args
@@ -20110,7 +20755,7 @@ class GlibcHeapBinsCommand(GenericCommand):
             # unsorted bin
             gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
             nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bin", args.verbose)
-            info("Found {:d} valid chunks in unsorted bin.".format(nb_chunk))
+            info("Found {:d} valid chunks in unsorted bin (when traced from `bk`).".format(nb_chunk))
 
             # small bins
             gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
@@ -20121,7 +20766,7 @@ class GlibcHeapBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} small bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} small bins (when traced from `bk`).".format(sum(bins.values()), len(bins)))
 
             # large bins
             gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
@@ -20132,13 +20777,14 @@ class GlibcHeapBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} large bins (when traced from `bk`).".format(sum(bins.values()), len(bins)))
         return
 
 
 @register_command
 class GlibcHeapTcachebinsCommand(GenericCommand):
     """Display information on the Tcache on an arena."""
+
     _cmdline_ = "heap bins tcache"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["tcache"]
@@ -20194,7 +20840,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     chunk = GlibcHeap.GlibcChunk(next_chunk)
                 except gdb.MemoryError:
                     m.append(Color.colorify(
-                        "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.address),
+                        "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.address),
                         corrupted_msg_color,
                     ))
                     break
@@ -20251,6 +20897,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 @register_command
 class GlibcHeapFastbinsYCommand(GenericCommand):
     """Display information on the fastbinsY on an arena."""
+
     _cmdline_ = "heap bins fast"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["fastbins"]
@@ -20310,7 +20957,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     chunk = GlibcHeap.GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
                     m.append(Color.colorify(
-                        "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                        "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
                         corrupted_msg_color,
                     ))
                     break
@@ -20360,6 +21007,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 @register_command
 class GlibcHeapUnsortedBinsCommand(GenericCommand):
     """Display information on the Unsorted Bins of an arena."""
+
     _cmdline_ = "heap bins unsorted"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["unsortedbin"]
@@ -20400,13 +21048,14 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
             arena.reset_bins_info()
             gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
             nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bin", args.verbose)
-            info("Found {:d} valid chunks in unsorted bin.".format(nb_chunk))
+            info("Found {:d} valid chunks in unsorted bin (when traced from `bk`).".format(nb_chunk))
         return
 
 
 @register_command
 class GlibcHeapSmallBinsCommand(GenericCommand):
     """Display information on the Small Bins of an arena."""
+
     _cmdline_ = "heap bins small"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["smallbin"]
@@ -20453,13 +21102,16 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} small bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} small bins (when traced from `bk`).".format(
+                sum(bins.values()), len(bins),
+            ))
         return
 
 
 @register_command
 class GlibcHeapLargeBinsCommand(GenericCommand):
     """Display information on the Large Bins of an arena."""
+
     _cmdline_ = "heap bins large"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["largebin"]
@@ -20506,13 +21158,16 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} large bins (when traced from `bk`).".format(
+                sum(bins.values()), len(bins),
+            ))
         return
 
 
 @register_command
 class RegistersCommand(GenericCommand):
     """Display full details on one, many or all registers value from current architecture."""
+
     _cmdline_ = "registers"
     _category_ = "01-a. Debugging Support - Context"
     _aliases_ = ["regs"]
@@ -20656,6 +21311,7 @@ class RegistersCommand(GenericCommand):
 @register_command
 class RopperCommand(GenericCommand):
     """Invoke ropper to search rop gadgets."""
+
     _cmdline_ = "ropper"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -20732,6 +21388,7 @@ class RopperCommand(GenericCommand):
 @register_command
 class RpCommand(GenericCommand):
     """Invoke rp++ (v2) command to search rop gadgets (only x64/x86)."""
+
     _cmdline_ = "rp"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -20759,7 +21416,7 @@ class RpCommand(GenericCommand):
     def exec_rp(self, rp, ropN, path):
         output_file = "rp{}_rop_{}.txt".format(ropN, os.path.basename(path))
         output_path = os.path.join(GEF_TEMP_DIR, output_file)
-        cmd = f"{rp} --file='{path}' --rop={ropN} --unique > {output_path}"
+        cmd = "{!r} --file={!r} --rop={:d} --unique > {!r}".format(rp, path, ropN, output_path)
         gef_print(titlify(cmd))
         if not os.path.exists(output_path):
             os.system(cmd)
@@ -20767,7 +21424,7 @@ class RpCommand(GenericCommand):
 
     def apply_filter(self, rp_output_path, filter_patterns, base_address):
         if not os.path.exists(rp_output_path):
-            err(f"{rp_output_path} is not found")
+            err("{!r} is not found".format(rp_output_path))
             return
         lines = open(rp_output_path, "r").read()
 
@@ -20806,6 +21463,7 @@ class RpCommand(GenericCommand):
         if args.kernel:
             try:
                 nm = GefUtil.which("nm")
+                grep = GefUtil.which("grep")
             except FileNotFoundError as e:
                 err("{}".format(e))
                 return
@@ -20842,7 +21500,7 @@ class RpCommand(GenericCommand):
                 return
             path = symboled_vmlinux_file
 
-            cmd = "{:s} '{:s}' | grep ' _stext$'".format(nm, symboled_vmlinux_file)
+            cmd = "{!r} {!r} | {!r} ' _stext$'".format(nm, symboled_vmlinux_file, grep)
             out = GefUtil.gef_execute_external(cmd, as_list=True, shell=True)
             if len(out) != 1:
                 err("Failed to resolve _stext")
@@ -20864,6 +21522,7 @@ class RpCommand(GenericCommand):
 @register_command
 class AssembleCommand(GenericCommand):
     """Inline code assemble by keystone."""
+
     _cmdline_ = "asm"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -20973,6 +21632,7 @@ class AssembleCommand(GenericCommand):
 @register_command
 class DisassembleCommand(GenericCommand):
     """Inline code disassemble by capstone."""
+
     _cmdline_ = "dasm"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -21033,7 +21693,9 @@ class DisassembleCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
+                    arch=args.arch, mode=args.mode, endian=args.big_endian,
+                )
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
@@ -21067,6 +21729,7 @@ class DisassembleCommand(GenericCommand):
 @register_command
 class AsmListCommand(GenericCommand):
     """List up general instructions by capstone (only x64/x86)."""
+
     _cmdline_ = "asm-list"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -21095,28 +21758,40 @@ class AsmListCommand(GenericCommand):
     _note_ += "- 8F (XOP prefix) is ignored\n"
     _note_ += "- 62 (EVEX prefix) is ignored"
 
+    cache = None
+
     def listup_x86(self, arch, mode):
+        if self.cache:
+            return self.cache
+
         DISP64 = "1122334455667788"
         DISP32 = "11223344"
         DISP16 = "1122"
         DISP8 = "11"
 
+        @Cache.cache_this_session
         def get_typical_bytecodes_modrm(_reg):
+            _mod = range(4)
+            assert 0 <= _reg <= 7
+            _reg = [_reg]
+            _rm = [0, 0b100] # The correct value is range(8), but it is reduced for speed.
+            _sib = [0, 0b01001001] # The correct value is range(256), but it is reduced for speed.
+
             bytecodes = []
-            for (mod, reg, rm) in itertools.product([0b00, 0b01, 0b10, 0b11], _reg, [0b000]):
+            for mod, reg, rm in itertools.product(_mod, _reg, _rm):
                 modrm = "{:02X}".format((mod << 6) | (reg << 3) | rm)
                 if mod == 0b00:
                     if rm == 0b101: # special case; [REG + disp32]
                         bytecode = modrm + DISP32
                     elif rm == 0b100: # use sib; [INDEX * SCALE + BASE]
-                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
+                        for sib in _sib:
                             bytecode = modrm + "{:02X}".format(sib)
                     else: # [REG]
                         bytecode = modrm
                 elif mod == 0b01:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp8]
                         bytecode = []
-                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
+                        for sib in _sib:
                             b = modrm + "{:02X}".format(sib) + DISP8
                             bytecode.append(b)
                     else: # [REG + disp8]
@@ -21124,14 +21799,17 @@ class AsmListCommand(GenericCommand):
                 elif mod == 0b10:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp32]
                         bytecode = []
-                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
+                        for sib in _sib:
                             b = modrm + "{:02X}".format(sib) + DISP32
                             bytecode.append(b)
                     else: # [REG + disp32]
                         bytecode = modrm + DISP32
                 elif mod == 0b11: # REG
                     bytecode = modrm
-                bytecodes.append(bytecode)
+                if isinstance(bytecode, list):
+                    bytecodes.extend(bytecode)
+                else:
+                    bytecodes.append(bytecode)
             return bytecodes
 
         def get_typical_bytecodes(opcodes):
@@ -21146,9 +21824,9 @@ class AsmListCommand(GenericCommand):
                 elif operand in ["iq"]:
                     bytecode = [DISP64]
                 elif operand in ["/0", "/1", "/2", "/3", "/4", "/5", "/6", "/7"]:
-                    bytecode = get_typical_bytecodes_modrm(tuple([int(operand[1])]))
+                    bytecode = get_typical_bytecodes_modrm(int(operand[1]))
                 elif operand == "/r":
-                    bytecode = get_typical_bytecodes_modrm(tuple([0]))
+                    bytecode = get_typical_bytecodes_modrm(0)
                 elif operand.endswith(("+r", "+i")):
                     b = int(operand.split("+")[0], 16)
                     bytecode = ["{:02X}".format(b + x) for x in range(8)]
@@ -21156,6 +21834,22 @@ class AsmListCommand(GenericCommand):
                     bytecode = [operand]
                 bytecodes.append(bytecode)
             return ["".join(b) for b in itertools.product(*bytecodes)]
+
+        def load_x86_json():
+            x86data_js = os.path.join(GEF_TEMP_DIR, "x86data.js")
+            if os.path.exists(x86data_js) and os.path.getsize(x86data_js) > 0:
+                x86 = open(x86data_js, "rb").read()
+            else:
+                url = "https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js"
+                x86 = http_get(url)
+                if x86 is None:
+                    err("Connection timed out: {:s}".format(url))
+                    return None
+                open(x86data_js, "wb").write(x86)
+
+            x86 = x86.split(b"// ${JSON:BEGIN}")[1].split(b"// ${JSON:END}")[0]
+            import json
+            return json.loads(x86)
 
         # load capstone
         capstone = sys.modules["capstone"]
@@ -21165,16 +21859,8 @@ class AsmListCommand(GenericCommand):
             err("CsError")
             return None
 
-        # download defines
-        url = "https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js"
-        x86 = http_get(url)
-        if x86 is None:
-            err("Connection timed out: {:s}".format(url))
-            return None
-        x86 = x86.split(b"// ${JSON:BEGIN}")[1].split(b"// ${JSON:END}")[0]
-        import json
-        x86 = json.loads(x86)
-
+        # default instruction set
+        x86 = load_x86_json()
         # manually added
         x86_insns = x86["instructions"]
         # [opcode_str, unused, unused, opcodes, attr]
@@ -21224,6 +21910,8 @@ class AsmListCommand(GenericCommand):
                 # add
                 valid_patterns.append([hex_code, opstr, opcodes, attr])
                 seen_patterns.append(hex_code)
+
+        self.cache = valid_patterns
         return valid_patterns
 
     @parse_args
@@ -21253,7 +21941,9 @@ class AsmListCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
+                    arch=args.arch, mode=args.mode, endian=args.big_endian,
+                )
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
@@ -21276,7 +21966,7 @@ class AsmListCommand(GenericCommand):
 
         # filter and print
         self.out = []
-        fmt = "{:22s} {:60s} {:22s} {}\n"
+        fmt = "{:22s} {:70s} {:22s} {}"
         legend = ["Hex code", "Assembly code", "Opcode", "Attributes"]
         text = Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading"))
         self.out.append(text)
@@ -21286,7 +21976,7 @@ class AsmListCommand(GenericCommand):
                 continue
 
             # keyword filter
-            line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, ",".join(attr))
+            line = "{:22s} {:70s} {:22s} {}".format(hex_code, opstr, opcodes, ",".join(attr))
             if args.include and any(f not in line for f in args.include):
                 continue
             if args.exclude and any(f in line for f in args.exclude):
@@ -21302,6 +21992,7 @@ class AsmListCommand(GenericCommand):
 @register_command
 class ProcessSearchCommand(GenericCommand, BufferingOutput):
     """Display a smart list of processes."""
+
     _cmdline_ = "ps"
     _category_ = "07-a. External Command - General"
     _aliases_ = ["process-search"]
@@ -21359,37 +22050,36 @@ class ProcessSearchCommand(GenericCommand, BufferingOutput):
             if not args.verbose:
                 if command.startswith("[") and command.endswith("]"): # kernel thread
                     continue
-                if command.startswith("socat "):
-                    continue
-                if command.startswith("grep "):
-                    continue
-                if command.startswith("gdb "):
-                    continue
-                if command.startswith("gdb-multiarch "):
-                    continue
-                if command.startswith("-bash"):
-                    continue
-                if command.startswith("sshd: "):
-                    continue
-                if command.startswith("avahi-daemon: "):
-                    continue
-                if command.startswith("@dbus-daemon "):
-                    continue
-                if command.startswith("(sd-pam)"):
-                    continue
-                if command.startswith("/lib/systemd/"):
-                    continue
-                if command.startswith("vmhgfs-fuse "):
-                    continue
-                if command.startswith("vmware-vmblock-fuse "):
-                    continue
-                if command.startswith("fusermount3 "):
-                    continue
-                if command.startswith("/usr/bin/vmtoolsd"):
-                    continue
-                if command.startswith("/usr/libexec/"):
-                    continue
-                if command.startswith("/snap/"):
+
+                skip_list = [
+                    # common
+                    "socat ",
+                    "grep ",
+                    "gdb ",
+                    "gdb-multiarch",
+                    "-bash",
+                    "sshd:",
+                    "ssh-agent ",
+                    # VMware tools
+                    "vmhgfs-fuse",
+                    "vmware-vmblock-fuse",
+                    "fusermount3",
+                    # system service
+                    "avahi-daemon:",
+                    "@dbus-daemon",
+                    "(sd-pam)",
+                    "gjs ",
+                    "gdm-session-worker",
+                    "cupsd ",
+                    # common path
+                    ("/bin/", "/usr/bin/"),
+                    ("/sbin/", "/usr/sbin/"),
+                    ("/lib/", "/usr/lib/"),
+                    "/usr/libexec/",
+                    "/snap/",
+                    "/var/lib/pcp/pmdas",
+                ]
+                if any(command.startswith(x) for x in skip_list):
                     continue
 
             if args.attach:
@@ -21408,6 +22098,7 @@ class ProcessSearchCommand(GenericCommand, BufferingOutput):
 @register_command
 class ArchInfoCommand(GenericCommand):
     """Display current architecture information."""
+
     _cmdline_ = "arch-info"
     _category_ = "02-a. Process Information - General"
 
@@ -21459,6 +22150,8 @@ class ArchInfoCommand(GenericCommand):
         gef_print(titlify("GEF architecture information"))
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
         gef_print("{:30s} {:s} {!s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
+        if is_arm32() or is_arm32_cortex_m():
+            gef_print("{:30s} {:s} {!s}".format("current_arch.__mode", RIGHT_ARROW, current_arch._ARM__mode))
         gef_print("{:30s} {:s} {!s}".format("current_arch.ptrsize", RIGHT_ARROW, current_arch.ptrsize))
 
         if current_arch.instruction_length is None:
@@ -21502,6 +22195,7 @@ class ArchInfoCommand(GenericCommand):
 @register_command
 class ElfInfoCommand(GenericCommand):
     """Display a limited subset of ELF header information."""
+
     _cmdline_ = "elf-info"
     _category_ = "02-a. Process Information - General"
 
@@ -21726,7 +22420,7 @@ class ElfInfoCommand(GenericCommand):
         Elf.EM_CLOUDSHIELD           : "CloudShield architecture family",
         Elf.EM_COREA_1ST             : "KIPO-KAIST Core-A 1st generation processor family",
         Elf.EM_COREA_2ND             : "KIPO-KAIST Core-A 2nd generation processor family",
-        Elf.EM_ARCV2                 : "Synopsys ARCompact V2",
+        Elf.EM_ARCV2                 : "Synopsys ARCompact V2", # codespell:ignore
         Elf.EM_OPEN8                 : "Open8 8-bit RISC soft processor core",
         Elf.EM_RL78                  : "Renesas RL78 family",
         Elf.EM_VIDEOCORE5            : "Broadcom VideoCore V processor",
@@ -21766,9 +22460,9 @@ class ElfInfoCommand(GenericCommand):
         Elf.EM_NFP                   : "Netronome Flow Processor",
         Elf.EM_VE                    : "NEC Vector Engine",
         Elf.EM_CSKY                  : "C-SKY processor family",
-        Elf.EM_ARC_COMPACT3_64       : "Synopsys ARCv2.3 64-bit",
+        Elf.EM_ARC_COMPACT3_64       : "Synopsys ARCv2.3 64-bit", # codespell:ignore
         Elf.EM_MCS6502               : "MOS Technology MCS 6502 processor",
-        Elf.EM_ARC_COMPACT3          : "Synopsys ARCv2.3 32-bit",
+        Elf.EM_ARC_COMPACT3          : "Synopsys ARCv2.3 32-bit", # codespell:ignore
         Elf.EM_KVX                   : "Kalray VLIW core of the MPPA processor family",
         Elf.EM_65816                 : "WDC 65816/65C816",
         Elf.EM_LOONGARCH             : "LoongArch",
@@ -21828,12 +22522,9 @@ class ElfInfoCommand(GenericCommand):
         Elf.Phdr.PT_GNU_STACK     : "GNU_STACK",
         Elf.Phdr.PT_GNU_RELRO     : "GNU_RELRO",
         Elf.Phdr.PT_GNU_PROPERTY  : "GNU_PROPERTY",
+        Elf.Phdr.PT_GNU_SFRAME    : "SFRAME",
         Elf.Phdr.PT_SUNWBSS       : "SUNWBSS",
         Elf.Phdr.PT_SUNWSTACK     : "SUNWSTACK",
-        Elf.Phdr.PT_MIPS_REGINFO  : "REGINFO",
-        Elf.Phdr.PT_MIPS_RTPROC   : "RTPROC",
-        Elf.Phdr.PT_MIPS_OPTIONS  : "OPTIONS",
-        Elf.Phdr.PT_MIPS_ABIFLAGS : "ABIFLAGS",
     }
 
     pflags = {
@@ -21848,34 +22539,51 @@ class ElfInfoCommand(GenericCommand):
     }
 
     stype = {
-        Elf.Shdr.SHT_NULL           : "NULL",
-        Elf.Shdr.SHT_PROGBITS       : "PROGBITS",
-        Elf.Shdr.SHT_SYMTAB         : "SYMTAB",
-        Elf.Shdr.SHT_STRTAB         : "STRTAB",
-        Elf.Shdr.SHT_RELA           : "RELA",
-        Elf.Shdr.SHT_HASH           : "HASH",
-        Elf.Shdr.SHT_DYNAMIC        : "DYNAMIC",
-        Elf.Shdr.SHT_NOTE           : "NOTE",
-        Elf.Shdr.SHT_NOBITS         : "NOBITS",
-        Elf.Shdr.SHT_REL            : "REL",
-        Elf.Shdr.SHT_SHLIB          : "SHLIB",
-        Elf.Shdr.SHT_DYNSYM         : "DYNSYM",
-        Elf.Shdr.SHT_INIT_ARRAY     : "INIT_ARRAY",
-        Elf.Shdr.SHT_FINI_ARRAY     : "FINI_ARRAY",
-        Elf.Shdr.SHT_PREINIT_ARRAY  : "PREINIT_ARRAY",
-        Elf.Shdr.SHT_GROUP          : "GROUP",
-        Elf.Shdr.SHT_SYMTAB_SHNDX   : "SYMTAB_SHNDX",
-        Elf.Shdr.SHT_RELR           : "RELR",
-        Elf.Shdr.SHT_GNU_ATTRIBUTES : "GNU_ATTRIBUTES",
-        Elf.Shdr.SHT_GNU_HASH       : "GNU_HASH",
-        Elf.Shdr.SHT_GNU_LIBLIST    : "GNU_LIBLIST",
-        Elf.Shdr.SHT_CHECKSUM       : "CHECKSUM",
-        Elf.Shdr.SHT_SUNW_move      : "SUNW_move",
-        Elf.Shdr.SHT_SUNW_COMDAT    : "SUNW_COMDAT",
-        Elf.Shdr.SHT_SUNW_syminfo   : "SUNW_syminfo",
-        Elf.Shdr.SHT_GNU_verdef     : "GNU_verdef",
-        Elf.Shdr.SHT_GNU_verneed    : "GNU_verneed",
-        Elf.Shdr.SHT_GNU_versym     : "GNU_versym",
+        Elf.Shdr.SHT_NULL                     : "NULL",
+        Elf.Shdr.SHT_PROGBITS                 : "PROGBITS",
+        Elf.Shdr.SHT_SYMTAB                   : "SYMTAB",
+        Elf.Shdr.SHT_STRTAB                   : "STRTAB",
+        Elf.Shdr.SHT_RELA                     : "RELA",
+        Elf.Shdr.SHT_HASH                     : "HASH",
+        Elf.Shdr.SHT_DYNAMIC                  : "DYNAMIC",
+        Elf.Shdr.SHT_NOTE                     : "NOTE",
+        Elf.Shdr.SHT_NOBITS                   : "NOBITS",
+        Elf.Shdr.SHT_REL                      : "REL",
+        Elf.Shdr.SHT_SHLIB                    : "SHLIB",
+        Elf.Shdr.SHT_DYNSYM                   : "DYNSYM",
+        Elf.Shdr.SHT_INIT_ARRAY               : "INIT_ARRAY",
+        Elf.Shdr.SHT_FINI_ARRAY               : "FINI_ARRAY",
+        Elf.Shdr.SHT_PREINIT_ARRAY            : "PREINIT_ARRAY",
+        Elf.Shdr.SHT_GROUP                    : "GROUP",
+        Elf.Shdr.SHT_SYMTAB_SHNDX             : "SYMTAB_SHNDX",
+        Elf.Shdr.SHT_RELR                     : "RELR",
+        Elf.Shdr.SHT_ANDROID_REL              : "ANDROID_REL",
+        Elf.Shdr.SHT_ANDROID_RELA             : "ANDROID_RELA",
+        Elf.Shdr.SHT_GNU_INCREMENTAL_INPUTS   : "GNU_INCREMENTAL_INPUTS",
+        Elf.Shdr.SHT_LLVM_ODRTAB              : "LLVM_ODRTAB",
+        Elf.Shdr.SHT_LLVM_LINKER_OPTIONS      : "LLVM_LINKER_OPTIONS",
+        Elf.Shdr.SHT_LLVM_CALL_GRAPH_PROFILE  : "LLVM_CALL_GRAPH_PROFILE",
+        Elf.Shdr.SHT_LLVM_ADDRSIG             : "LLVM_ADDRSIG",
+        Elf.Shdr.SHT_LLVM_DEPENDENT_LIBRARIES : "LLVM_DEPENDENT_LIBRARIES",
+        Elf.Shdr.SHT_LLVM_SYMPART             : "LLVM_SYMPART",
+        Elf.Shdr.SHT_LLVM_PART_EHDR           : "LLVM_PART_EHDR",
+        Elf.Shdr.SHT_LLVM_PART_PHDR           : "LLVM_PART_PHDR",
+        Elf.Shdr.SHT_LLVM_BB_ADDR_MAP_V0      : "LLVM_BB_ADDR_MAP_V0",
+        Elf.Shdr.SHT_LLVM_CALL_GRAPH_PROFILE  : "LLVM_CALL_GRAPH_PROFILE",
+        Elf.Shdr.SHT_LLVM_BB_ADDR_MAP         : "LLVM_BB_ADDR_MAP",
+        Elf.Shdr.SHT_LLVM_OFFLOADING          : "LLVM_OFFLOADING",
+        Elf.Shdr.SHT_LLVM_LTO                 : "LLVM_LTO",
+        Elf.Shdr.SHT_ANDROID_RELR             : "ANDROID_RELR",
+        Elf.Shdr.SHT_GNU_ATTRIBUTES           : "GNU_ATTRIBUTES",
+        Elf.Shdr.SHT_GNU_HASH                 : "GNU_HASH",
+        Elf.Shdr.SHT_GNU_LIBLIST              : "GNU_LIBLIST",
+        Elf.Shdr.SHT_CHECKSUM                 : "CHECKSUM",
+        Elf.Shdr.SHT_SUNW_move                : "SUNW_move",
+        Elf.Shdr.SHT_SUNW_COMDAT              : "SUNW_COMDAT",
+        Elf.Shdr.SHT_SUNW_syminfo             : "SUNW_syminfo",
+        Elf.Shdr.SHT_GNU_verdef               : "GNU_verdef",
+        Elf.Shdr.SHT_GNU_verneed              : "GNU_verneed",
+        Elf.Shdr.SHT_GNU_versym               : "GNU_versym",
     }
 
     def elf_info(self, elf, orig_filepath=None):
@@ -22071,10 +22779,19 @@ class ElfInfoCommand(GenericCommand):
 
         # readelf pattern
         if args.use_readelf:
-            if args.no_pager:
-                os.system("LANG=C readelf -a --wide '{:s}'".format(local_filepath))
+            try:
+                readelf = GefUtil.which("readelf")
+            except FileNotFoundError:
+                err("Not found readelf.")
+                return
+            try:
+                less = GefUtil.which("less")
+            except FileNotFoundError:
+                less = False
+            if args.no_pager or not less:
+                os.system("LANG=C {!r} -a --wide {!r}".format(readelf, local_filepath))
             else:
-                os.system("LANG=C readelf -a --wide '{:s}' | less".format(local_filepath))
+                os.system("LANG=C {!r} -a --wide {!r} | {!r}".format(readelf, local_filepath, less))
             if tmp_filepath and os.path.exists(tmp_filepath):
                 os.unlink(tmp_filepath)
             return
@@ -22097,6 +22814,7 @@ class ElfInfoCommand(GenericCommand):
 @register_command
 class ChecksecCommand(GenericCommand):
     """Checksec the security properties of the current executable or passed as argument."""
+
     _cmdline_ = "checksec"
     _category_ = "02-f. Process Information - Security"
     _aliases_ = ["cs"]
@@ -22378,7 +23096,11 @@ class ChecksecCommand(GenericCommand):
         gef_print("{:<40s}: {:s}".format("NX", self.get_colored_msg(sec["NX"])))
 
         # PIE
-        gef_print("{:<40s}: {:s}".format("PIE", self.get_colored_msg(sec["PIE"])))
+        if sec["PIE"]:
+            gef_print("{:<40s}: {:s}".format("PIE", self.get_colored_msg(sec["PIE"])))
+        else:
+            vaddr = min([p.p_vaddr for p in elf.phdrs if p.p_type == Elf.Phdr.PT_LOAD])
+            gef_print("{:<40s}: {:s} ({:#x})".format("PIE", self.get_colored_msg(sec["PIE"]), vaddr))
 
         # RELRO
         if sec["Full RELRO"]:
@@ -22431,14 +23153,10 @@ class ChecksecCommand(GenericCommand):
         # RPATH
         if sec["RPATH"]:
             gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
-        else:
-            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Not found", "bold green")))
 
         # RUNPATH
         if sec["RUNPATH"]:
             gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
-        else:
-            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Not found", "bold green")))
 
         # Clang CFI
         if sec["Clang CFI"]:
@@ -22505,12 +23223,6 @@ class ChecksecCommand(GenericCommand):
             err("File name could not be determined.")
             return
 
-        if remote_filepath:
-            print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
-        else:
-            print_filename = local_filepath
-        gef_print(titlify("checksec - {:s}".format(print_filename)))
-
         self.print_security_properties(local_filepath)
 
         if tmp_filepath and os.path.exists(tmp_filepath):
@@ -22521,6 +23233,7 @@ class ChecksecCommand(GenericCommand):
 @register_command
 class KernelChecksecCommand(GenericCommand):
     """Checksec the security properties of the current kernel."""
+
     _cmdline_ = "kchecksec"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -23596,6 +24309,7 @@ class KernelChecksecCommand(GenericCommand):
 @register_command
 class DwarfExceptionHandlerInfoCommand(GenericCommand):
     """Dump the DWARF exception handler information with the byte code itself."""
+
     _cmdline_ = "dwarf-exception-handler"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -24046,7 +24760,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     # parse ptr_size, segment_size
                     segment_size = 0
                     if version >= 4:
-                        new_pos, ptr_size = self.raed_1ubyte(data, pos)
+                        new_pos, ptr_size = self.read_1ubyte(data, pos)
                         entries.append([pos, data[pos:new_pos], "ptr_size", ptr_size, ""])
                         pos = new_pos
                         new_pos, segment_size = self.read_1ubyte(data, pos)
@@ -24356,7 +25070,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
                         off = op2 * data_align
-                        entries.append([pos, data[pos:new_pos], indent + "offset_extended r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "offset_extended r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_restore_extended:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
@@ -24374,7 +25092,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname1 = self.get_register_name(op1)
                         regname2 = self.get_register_name(op2)
-                        entries.append([pos, data[pos:new_pos], indent + "register r{:d} ({:s}) in r{:d} ({:s})".format(op1, regname1, op2, regname2), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "register r{:d} ({:s}) in r{:d} ({:s})".format(op1, regname1, op2, regname2),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_remember_state:
                         entries.append([pos, data[pos:new_pos], indent + "remember_state", None, ""])
                     elif opcode == self.DW_CFA_restore_state:
@@ -24383,7 +25105,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent + "def_cfa r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "def_cfa r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_def_cfa_register:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
@@ -24408,13 +25134,21 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
                         off = op2 * data_align
-                        entries.append([pos, data[pos:new_pos], indent + "offset_extended_sf r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "offset_extended_sf r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_def_cfa_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
                         off = op2 * data_align
-                        entries.append([pos, data[pos:new_pos], indent + "def_cfa_sf r{:d} ({:s}) at offset {:#x}".format(op1, regname, off), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "def_cfa_sf r{:d} ({:s}) at offset {:#x}".format(op1, regname, off),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_def_cfa_offset_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         entries.append([pos, data[pos:new_pos], indent + "def_cfa_offset_sf {:#x}".format(op1 * data_align), None, ""])
@@ -25118,7 +25852,10 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 # parse lpstart_encoding
                 new_pos, lpstart_encoding = self.read_1ubyte(data, pos)
                 encoding_str = self.get_encoding_str(lpstart_encoding)
-                entries.append([pos, data[pos:new_pos], "landing_pad_start_encoding", lpstart_encoding, "encoding: {:s}".format(encoding_str)])
+                entries.append([
+                    pos, data[pos:new_pos],
+                    "landing_pad_start_encoding", lpstart_encoding, "encoding: {:s}".format(encoding_str),
+                ])
                 pos = new_pos
 
                 # parse lpstart
@@ -25130,7 +25867,10 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 # parse ttype_encoding
                 new_pos, ttype_encoding = self.read_1ubyte(data, pos)
                 encoding_str = self.get_encoding_str(ttype_encoding)
-                entries.append([pos, data[pos:new_pos], "ttype_encoding", ttype_encoding, "encoding: {:s}".format(encoding_str)])
+                entries.append([
+                    pos, data[pos:new_pos],
+                    "ttype_encoding", ttype_encoding, "encoding: {:s}".format(encoding_str),
+                ])
                 pos = new_pos
 
                 # parse ttype_base_offset
@@ -25138,13 +25878,19 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 if ttype_encoding != self.DW_EH_PE_omit:
                     new_pos, ttype_base_offset = self.get_uleb128(data, pos)
                     ttype_base = new_pos + ttype_base_offset
-                    entries.append([pos, data[pos:new_pos], "ttype_base_offset", ttype_base_offset, "ttype_base: {:#x}".format(ttype_base)])
+                    entries.append([
+                        pos, data[pos:new_pos],
+                        "ttype_base_offset", ttype_base_offset, "ttype_base: {:#x}".format(ttype_base),
+                    ])
                     pos = new_pos
 
                 # parse call_site_encoding
                 new_pos, call_site_encoding = self.read_1ubyte(data, pos)
                 encoding_str = self.get_encoding_str(call_site_encoding)
-                entries.append([pos, data[pos:new_pos], "call_site_encoding", call_site_encoding, "encoding: {:s}".format(encoding_str)])
+                entries.append([
+                    pos, data[pos:new_pos],
+                    "call_site_encoding", call_site_encoding, "encoding: {:s}".format(encoding_str),
+                ])
                 pos = new_pos
 
                 # parse call_site_table_len
@@ -25374,6 +26120,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 @register_command
 class MainBreakCommand(GenericCommand):
     """Set a breakpoint at the beginning of main with or without symbols, then continue."""
+
     _cmdline_ = "main-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25459,6 +26206,7 @@ class MainBreakCommand(GenericCommand):
 
 class EntryBreakBreakpoint(gdb.Breakpoint):
     """Breakpoint used internally to stop execution at the most convenient entry point."""
+
     def __init__(self, location):
         super().__init__(location, gdb.BP_BREAKPOINT, internal=True, temporary=True)
         self.silent = True
@@ -25467,14 +26215,14 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
     def stop(self):
         EventHandler.__gef_check_disabled_bp__ = True
         self.enabled = False
-
         Cache.reset_gef_caches()
         return True
 
 
 @register_command
-class EntryPointBreakCommand(GenericCommand):
+class EntryBreakCommand(GenericCommand):
     """Try to find best entry point and set a temporary breakpoint on it."""
+
     _cmdline_ = "entry-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["start"]
@@ -25497,6 +26245,32 @@ class EntryPointBreakCommand(GenericCommand):
             ]),
             "Possible symbols for entry points",
         )
+        return
+
+    @staticmethod
+    def stop_callback(_):
+        # unhook
+        EventHooking.gef_on_new_unhook(EntryBreakCommand.stop_callback)
+        ContextCommand.unhide_context()
+
+        # get section
+        fpath = Path.get_filepath()
+        executable_section = ProcessMap.process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
+
+        if executable_section.page_start <= current_arch.pc < executable_section.page_end:
+            # already stopped around entry point.
+            # However, it automatically resumes execution, so we need a breakpoint.
+            next_insn = get_insn_next(current_arch.pc)
+            info("Breaking at: {:#x}".format(next_insn.address))
+            EntryBreakBreakpoint("*{:#x}".format(next_insn.address))
+        else:
+            # stopped in ld, so continue to entry-point.
+            base_address = ProcessMap.process_lookup_path(fpath).page_start
+            entry_address = base_address + Elf.get_elf().e_entry
+            info("Breaking at entry-point: {:#x}".format(entry_address))
+            EntryBreakBreakpoint("*{:#x}".format(entry_address))
+
+        # automatically continue
         return
 
     # Need not @parse_args because argparse can't stop interpreting argument for start.
@@ -25547,49 +26321,23 @@ class EntryPointBreakCommand(GenericCommand):
         # instead of `set stop-on-solib-events 1` because shared object are never loaded.
         # At least gdb 10.1 (Ubuntu 18.04) supports gdb.events.new_objfile.
         ContextCommand.hide_context()
-        EventHooking.gef_on_new_hook(EntryPointBreakCommand.stop_callback)
+        EventHooking.gef_on_new_hook(EntryBreakCommand.stop_callback)
         gdb.execute("run {}".format(" ".join(argv)))
         return
 
-    @staticmethod
-    def stop_callback(_):
-        # unhook
-        EventHooking.gef_on_new_unhook(EntryPointBreakCommand.stop_callback)
-        ContextCommand.unhide_context()
 
-        # get section
-        fpath = Path.get_filepath()
-        executable_section = ProcessMap.process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
-
-        if executable_section.page_start <= current_arch.pc < executable_section.page_end:
-            # already stopped around entry point.
-            # However, it automatically resumes execution, so we need a breakpoint.
-            next_insn = get_insn_next(current_arch.pc)
-            info("Breaking at: {:#x}".format(next_insn.address))
-            EntryBreakBreakpoint("*{:#x}".format(next_insn.address))
-        else:
-            # stopped in ld, so continue to entry-point.
-            base_address = ProcessMap.process_lookup_path(fpath).page_start
-            entry_address = base_address + Elf.get_elf().e_entry
-            info("Breaking at entry-point: {:#x}".format(entry_address))
-            EntryBreakBreakpoint("*{:#x}".format(entry_address))
-
-        # automatically continue
-        return
-
-
-class NamedBreakpoint(gdb.Breakpoint):
+class NamedBreakBreakpoint(gdb.Breakpoint):
     """Breakpoint which shows a specified name."""
-    def __init__(self, location, name):
-        super().__init__(location, gdb.BP_BREAKPOINT, internal=False, temporary=False)
-        self.name = name
-        self.loc = location
 
+    def __init__(self, loc, name):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        self.name = name
+        self.loc = loc
         return
 
     def stop(self):
         Cache.reset_gef_caches()
-        msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
+        msg = "Hit breakpoint *{:#x} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
         ContextCommand.push_context_message("info", msg)
         return True
 
@@ -25597,6 +26345,7 @@ class NamedBreakpoint(gdb.Breakpoint):
 @register_command
 class NamedBreakCommand(GenericCommand):
     """Set a breakpoint and assigns a name to it, which will be shown if hit."""
+
     _cmdline_ = "named-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25610,19 +26359,18 @@ class NamedBreakCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        if args.location is not None:
-            location = "*{:#x}".format(args.location)
-        else:
-            location = "*{:#x}".format(current_arch.pc)
-        NamedBreakpoint(location, args.name)
+        location = args.location
+        if location is None:
+            location = current_arch.pc
+        NamedBreakBreakpoint(location, args.name)
         return
 
 
-class CommandBreakpoint(gdb.Breakpoint):
+class CommandBreakBreakpoint(gdb.Breakpoint):
     """Breakpoint which executes user defined command silently and continue."""
+
     def __init__(self, loc, cmd):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
-        self.loc = loc
         self.cmd = cmd
         return
 
@@ -25635,6 +26383,7 @@ class CommandBreakpoint(gdb.Breakpoint):
 @register_command
 class CommandBreakCommand(GenericCommand):
     """Set a breakpoint which executes user defined command silently and continue, if hit."""
+
     _cmdline_ = "command-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25651,12 +26400,70 @@ class CommandBreakCommand(GenericCommand):
         location = args.location
         if location is None:
             location = current_arch.pc
-        CommandBreakpoint(location, args.command)
+        CommandBreakBreakpoint(location, args.command)
+        return
+
+
+class RegisterDumpBreakBreakpoint(gdb.Breakpoint):
+    """Breakpoint which dump registers silently and continue."""
+
+    def __init__(self, loc, tag, regs):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        self.loc = loc
+        self.tag = tag
+        self.regs = regs
+        return
+
+    def stop(self):
+        Cache.reset_gef_caches()
+        out = []
+        for r in self.regs:
+            try:
+                v = get_register(r)
+            except gdb.error:
+                continue
+            out.append("{:s}={:#x}".format(r, v))
+
+        colored_addr = Color.colorify_hex(self.loc, "bold yellow")
+        tag = ""
+        if self.tag:
+            tag = "{:s}: ".format(self.tag)
+        gef_print("{:s}: {:s}{:s}".format(colored_addr, tag, ", ".join(out)))
+        return False
+
+
+@register_command
+class RegisterDumpBreakCommand(GenericCommand):
+    """Set a breakpoint which dumps registers silently and continue, if hit."""
+
+    _cmdline_ = "regdump-break"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
+                        help="the address to set breakpoint. (default: current_arch.pc)")
+    parser.add_argument("-t", "--tag", help="the tag if breakpoint is hit.")
+    parser.add_argument("-r", "--regs", action="append", help="the register name dumped if breakpoint is hit.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x55555555aab9 -r rax\n".format(_cmdline_)
+    _example_ += '{:s} 0x55555555aab9 -t "state changed" -r rax'.format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
+        if not args.regs:
+            self.usage()
+            return
+        location = args.location
+        if location is None:
+            location = current_arch.pc
+        RegisterDumpBreakBreakpoint(location, args.tag, args.regs)
         return
 
 
 class TakenOrNotBreakpoint(gdb.Breakpoint):
     """Breakpoint which only branch is taken or not."""
+
     def __init__(self, loc, taken, is_hwbp):
         if is_hwbp:
             bp_type = gdb.BP_HARDWARE_BREAKPOINT
@@ -25684,6 +26491,7 @@ class TakenOrNotBreakpoint(gdb.Breakpoint):
 @register_command
 class BreakIfTakenCommand(GenericCommand):
     """Set a breakpoint which breaks if branch is taken."""
+
     _cmdline_ = "break-if-taken"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25702,6 +26510,7 @@ class BreakIfTakenCommand(GenericCommand):
 @register_command
 class BreakIfNotTakenCommand(GenericCommand):
     """Set a breakpoint which breaks if branch is not taken."""
+
     _cmdline_ = "break-if-not-taken"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25720,6 +26529,7 @@ class BreakIfNotTakenCommand(GenericCommand):
 @register_command
 class ContextCommand(GenericCommand):
     """Display various information every time GDB hits a breakpoint."""
+
     _cmdline_ = "context"
     _category_ = "01-a. Debugging Support - Context"
     _aliases_ = ["ctx"]
@@ -25829,7 +26639,7 @@ class ContextCommand(GenericCommand):
             Color.colorify("ReadOnly", Config.get_gef_setting("theme.address_readonly")),
             Color.colorify("None", Config.get_gef_setting("theme.address_valid_but_none")),
             Color.colorify("RWX", Config.get_gef_setting("theme.address_rwx")),
-            Color.colorify("String", Config.get_gef_setting("theme.dereference_string"))
+            Color.colorify("String", Config.get_gef_setting("theme.dereference_string")),
         )
         gef_print(legend)
         Cache.cached_context_legend = legend
@@ -26055,6 +26865,7 @@ class ContextCommand(GenericCommand):
         show_opcodes_size = Config.get_gef_setting("context.show_opcodes_size")
         past_lines_color = Config.get_gef_setting("theme.context_code_past")
         future_lines_color = Config.get_gef_setting("theme.context_code_future")
+        use_capstone = Config.get_gef_setting("context.use_capstone")
         padding = " " * len(RIGHT_ARROW[1:])
 
         if current_arch is None and is_remote_debug():
@@ -26073,12 +26884,14 @@ class ContextCommand(GenericCommand):
             frame = None
             arch_name = "{}:{}".format(current_arch.arch.lower(), "???")
 
-        if Config.get_gef_setting("context.use_capstone"):
+        if use_native_x_command:
+            arch_name += " (gdb-native)"
+        elif use_capstone:
             arch_name += " (capstone)"
         else:
             arch_name += " (gdb-native)"
 
-        self.context_title("code:{}".format(arch_name))
+        self.context_title("code: {}".format(arch_name))
         if use_native_x_command:
             gdb.execute("x/16i {:#x}".format(current_arch.pc))
             return
@@ -26095,23 +26908,19 @@ class ContextCommand(GenericCommand):
             else:
                 bp_prefix = " "
 
-            # insn to string
-            if show_opcodes_size == 0:
-                text = str(insn)
+            # insn to string with coloring by address against pc
+            if insn.address < pc:
+                text = "{:{}o}".format(insn, show_opcodes_size)
+                if past_lines_color:
+                    text = Color.remove_color(text)
+                    text = Color.colorify(text, past_lines_color)
+            elif insn.address == pc:
+                text = "{:{}O}".format(insn, show_opcodes_size)
             else:
-                # coloring by address against pc
-                if insn.address < pc:
-                    text = "{:{}o}".format(insn, show_opcodes_size)
-                    if past_lines_color:
-                        text = Color.remove_color(text)
-                        text = Color.colorify(text, past_lines_color)
-                elif insn.address == pc:
-                    text = "{:{}O}".format(insn, show_opcodes_size)
-                else:
-                    text = "{:{}o}".format(insn, show_opcodes_size)
-                    if future_lines_color:
-                        text = Color.remove_color(text)
-                        text = Color.colorify(text, future_lines_color)
+                text = "{:{}o}".format(insn, show_opcodes_size)
+                if future_lines_color:
+                    text = Color.remove_color(text)
+                    text = Color.colorify(text, future_lines_color)
 
             # bp prefix and branch info
             if insn.address != pc:
@@ -26156,11 +26965,7 @@ class ContextCommand(GenericCommand):
                 try:
                     if delay_slot:
                         next_insn = list(Disasm.gef_disassemble(insn.address, 2))[-1]
-                        if show_opcodes_size == 0:
-                            text = str(next_insn)
-                        else:
-                            insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                            text = insn_fmt.format(next_insn)
+                        text = "{:{}o}".format(next_insn, show_opcodes_size)
                         text = "{}{}{}\t{}".format(bp_prefix, padding, text, Color.colorify("Maybe delay-slot", "bold yellow"))
                         gef_print(text)
                 except Exception:
@@ -26169,11 +26974,7 @@ class ContextCommand(GenericCommand):
                 # branch target address
                 try:
                     for i, tinsn in enumerate(Disasm.gef_disassemble(target, nb_insn)):
-                        if show_opcodes_size == 0:
-                            text = str(tinsn)
-                        else:
-                            insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                            text = insn_fmt.format(tinsn)
+                        text = "{:{}o}".format(tinsn, show_opcodes_size)
                         if i == 0:
                             gef_print("") # need blank line
                             text = "   {} {}".format(RIGHT_ARROW[1:-1], text)
@@ -26196,7 +26997,7 @@ class ContextCommand(GenericCommand):
     RE_MATCH_REG3 = re.compile(r"[xw]\d+")
 
     def context_memory_access(self):
-        if not (is_x86() or is_arm32() or is_arm64()):
+        if not (is_x86() or is_arm32() or is_arm32_cortex_m() or is_arm64()):
             return
 
         inst_iter = Disasm.gef_disassemble(current_arch.pc, 2)
@@ -26234,7 +27035,7 @@ class ContextCommand(GenericCommand):
                 # $rip/$eip points next instruction
                 code_orig, code = code, code.replace("$rip", "$rip+{:#x}".format(codesize))
 
-            elif is_arm32():
+            elif is_arm32() or is_arm32_cortex_m():
                 # add "$" to resiter
                 code = code.replace(" ", "")
                 code = code.replace("#", "")
@@ -26508,15 +27309,16 @@ class ContextCommand(GenericCommand):
         #   s390x:   basr   %lr, %r1
         #   sh4:     jsr    @r1
         #   alpha:   jmp    (t0)
-        maybe_reg = insn.operands[-1].split()[0]
-        if len(maybe_reg) <= 5 and maybe_reg[0] == "(" and maybe_reg[-1] == ")":
-            maybe_reg = maybe_reg[1:-1]
-        ptr = get_register(maybe_reg)
-        if ptr is not None:
-            if to_str:
-                return "{:#x}".format(ptr)
-            else:
-                return ptr
+        if insn.operands[-1].split():
+            maybe_reg = insn.operands[-1].split()[0]
+            if len(maybe_reg) <= 5 and maybe_reg[0] == "(" and maybe_reg[-1] == ")":
+                maybe_reg = maybe_reg[1:-1]
+            ptr = get_register(maybe_reg)
+            if ptr is not None:
+                if to_str:
+                    return "{:#x}".format(ptr)
+                else:
+                    return ptr
 
         return None
 
@@ -26707,12 +27509,15 @@ class ContextCommand(GenericCommand):
 
         nb_line = Config.get_gef_setting("context.nb_lines_code")
         cur_line_color = Config.get_gef_setting("theme.source_current_line")
-        self.context_title("source:{}+{}".format(os.path.realpath(symtab.filename), line_num + 1))
+        self.context_title("source: {}+{}".format(os.path.normpath(symtab.filename), line_num + 1))
         show_extra_info = Config.get_gef_setting("context.show_source_code_variable_values")
 
         for i in range(line_num - nb_line + 1, line_num + nb_line):
             if i < 0:
                 continue
+
+            if len(lines) <= i:
+                break
 
             if self.line_has_breakpoint(file_base_name, i + 1, bp_locations):
                 bp_prefix = Color.redify(BP_GLYPH)
@@ -26734,12 +27539,9 @@ class ContextCommand(GenericCommand):
                 gef_print(Color.colorify("{}{:s}".format(prefix, lines[i]), cur_line_color))
 
             elif i > line_num:
-                try:
-                    future_line = "{:4d}   {:s}".format(i + 1, lines[i])
-                    future_line = Color.colorify(future_line, future_lines_color)
-                    gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", future_line))
-                except IndexError:
-                    break
+                future_line = "{:4d}   {:s}".format(i + 1, lines[i])
+                future_line = Color.colorify(future_line, future_lines_color)
+                gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", future_line))
         return
 
     def get_pc_context_info(self, pc, line):
@@ -26877,6 +27679,10 @@ class ContextCommand(GenericCommand):
             level += 1
             nb_backtrace -= 1
 
+        if nb_backtrace == 0:
+            if current_frame:
+                gef_print("   [..]")
+
         orig_frame.select()
         return
 
@@ -26908,14 +27714,18 @@ class ContextCommand(GenericCommand):
         if is_kgdb():
             return
 
-        self.context_title("threads")
-
+        nb_lines_threads = Config.get_gef_setting("context.nb_lines_threads")
         threads = gdb.selected_inferior().threads()[::-1]
-        idx = Config.get_gef_setting("context.nb_lines_threads")
-        if idx > 0:
-            threads = threads[0:idx]
 
-        if idx == 0:
+        if nb_lines_threads < 0:
+            shown_threads = len(threads)
+        else:
+            shown_threads = nb_lines_threads
+        self.context_title("threads: {:d}/{:d}".format(shown_threads, len(threads)))
+
+        if nb_lines_threads > 0:
+            threads = threads[:nb_lines_threads]
+        elif nb_lines_threads == 0:
             return
 
         if not threads:
@@ -27090,6 +27900,7 @@ class ContextCommand(GenericCommand):
 @register_command
 class MemoryCommand(GenericCommand):
     """The base command to watch the memory."""
+
     _cmdline_ = "memory"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27118,6 +27929,7 @@ class MemoryCommand(GenericCommand):
 @register_command
 class MemoryWatchCommand(GenericCommand):
     """Add address ranges to the memory view."""
+
     _cmdline_ = "memory watch"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27151,6 +27963,7 @@ class MemoryWatchCommand(GenericCommand):
 @register_command
 class MemoryUnwatchCommand(GenericCommand):
     """Remove address ranges to the memory view."""
+
     _cmdline_ = "memory unwatch"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27180,6 +27993,7 @@ class MemoryUnwatchCommand(GenericCommand):
 @register_command
 class MemoryWatchResetCommand(GenericCommand):
     """Remove all watchpoints."""
+
     _cmdline_ = "memory reset"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27197,6 +28011,7 @@ class MemoryWatchResetCommand(GenericCommand):
 @register_command
 class MemoryWatchListCommand(GenericCommand):
     """List all watchpoints to display in context layout."""
+
     _cmdline_ = "memory list"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27219,6 +28034,7 @@ class MemoryWatchListCommand(GenericCommand):
 @register_command
 class HexdumpCommand(GenericCommand):
     """Display the hexdump from the memory location specified."""
+
     _cmdline_ = "hexdump"
     _category_ = "03-b. Memory - View"
     _repeat_ = True
@@ -27346,6 +28162,7 @@ class HexdumpCommand(GenericCommand):
 @register_command
 class HexdumpFlexibleCommand(GenericCommand):
     """Display the hexdump with user defined format."""
+
     _cmdline_ = "hexdump-flexible"
     _category_ = "03-b. Memory - View"
     _aliases_ = ["xxdf", "hdf"]
@@ -27437,6 +28254,7 @@ class HexdumpFlexibleCommand(GenericCommand):
 @register_command
 class PatchCommand(GenericCommand):
     """The base command to write specified values to the specified address."""
+
     _cmdline_ = "patch"
     _category_ = "03-c. Memory - Patch"
 
@@ -27559,6 +28377,7 @@ class PatchCommand(GenericCommand):
 @register_command
 class PatchQwordCommand(PatchCommand):
     """Write specified QWORD to the specified address."""
+
     _cmdline_ = "patch qword"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch q"]
@@ -27584,6 +28403,7 @@ class PatchQwordCommand(PatchCommand):
 @register_command
 class PatchDwordCommand(PatchCommand):
     """Write specified DWORD to the specified address."""
+
     _cmdline_ = "patch dword"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch d"]
@@ -27609,6 +28429,7 @@ class PatchDwordCommand(PatchCommand):
 @register_command
 class PatchWordCommand(PatchCommand):
     """Write specified WORD to the specified address."""
+
     _cmdline_ = "patch word"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch w"]
@@ -27634,6 +28455,7 @@ class PatchWordCommand(PatchCommand):
 @register_command
 class PatchByteCommand(PatchCommand):
     """Write specified BYTE to the specified address."""
+
     _cmdline_ = "patch byte"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch b"]
@@ -27659,6 +28481,7 @@ class PatchByteCommand(PatchCommand):
 @register_command
 class PatchStringCommand(PatchCommand):
     """Write specified string to the specified memory address."""
+
     _cmdline_ = "patch string"
     _category_ = "03-c. Memory - Patch"
 
@@ -27710,6 +28533,7 @@ class PatchStringCommand(PatchCommand):
 @register_command
 class PatchHexCommand(PatchCommand):
     """Write specified hex string to the specified address."""
+
     _cmdline_ = "patch hex"
     _category_ = "03-c. Memory - Patch"
 
@@ -27760,6 +28584,7 @@ class PatchHexCommand(PatchCommand):
 @register_command
 class PatchPatternCommand(PatchCommand):
     """Write a pattern string to the specified memory address."""
+
     _cmdline_ = "patch pattern"
     _category_ = "03-c. Memory - Patch"
 
@@ -27809,6 +28634,7 @@ class PatchPatternCommand(PatchCommand):
 @register_command
 class PatchNopCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with NOP."""
+
     _cmdline_ = "patch nop"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["nop"]
@@ -27840,7 +28666,7 @@ class PatchNopCommand(PatchCommand):
             info("Not patching since num_bytes == 0")
             return
 
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         nop_op_len = len(current_arch.nop_insn)
@@ -27912,6 +28738,7 @@ class PatchNopCommand(PatchCommand):
 @register_command
 class PatchInfloopCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with infinity loop."""
+
     _cmdline_ = "patch inf"
     _category_ = "03-c. Memory - Patch"
 
@@ -27928,7 +28755,7 @@ class PatchInfloopCommand(PatchCommand):
         return
 
     def patch_infloop(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -27983,6 +28810,7 @@ class PatchInfloopCommand(PatchCommand):
 @register_command
 class PatchTrapCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with breakpoint or trap (if available)."""
+
     _cmdline_ = "patch trap"
     _category_ = "03-c. Memory - Patch"
 
@@ -27999,7 +28827,7 @@ class PatchTrapCommand(PatchCommand):
         return
 
     def patch_trap(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -28050,6 +28878,7 @@ class PatchTrapCommand(PatchCommand):
 @register_command
 class PatchRetCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with return."""
+
     _cmdline_ = "patch ret"
     _category_ = "03-c. Memory - Patch"
 
@@ -28066,7 +28895,7 @@ class PatchRetCommand(PatchCommand):
         return
 
     def patch_ret(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -28117,6 +28946,7 @@ class PatchRetCommand(PatchCommand):
 @register_command
 class PatchSyscallCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with syscall."""
+
     _cmdline_ = "patch syscall"
     _category_ = "03-c. Memory - Patch"
 
@@ -28133,7 +28963,7 @@ class PatchSyscallCommand(PatchCommand):
         return
 
     def patch_syscall(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -28184,6 +29014,7 @@ class PatchSyscallCommand(PatchCommand):
 @register_command
 class PatchHistoryCommand(PatchCommand):
     """Display the patch history."""
+
     _cmdline_ = "patch history"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch list"]
@@ -28220,6 +29051,7 @@ class PatchHistoryCommand(PatchCommand):
 @register_command
 class PatchRevertCommand(PatchCommand):
     """Revert patch from the patch history."""
+
     _cmdline_ = "patch revert"
     _category_ = "03-c. Memory - Patch"
 
@@ -28288,6 +29120,7 @@ class PatchRevertCommand(PatchCommand):
 @register_command
 class DereferenceCommand(GenericCommand):
     """Dereference recursively from an address and display information."""
+
     _cmdline_ = "dereference"
     _category_ = "01-a. Debugging Support - Context"
     _repeat_ = True
@@ -28298,17 +29131,17 @@ class DereferenceCommand(GenericCommand):
                         help="the memory address to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0),
                         help="the count of lines.")
+    parser.add_argument("-a", "--is-addr", action="store_true", help="display only valid address.")
+    parser.add_argument("-A", "--is-not-addr", action="store_true", help="display only invalid address.")
+    parser.add_argument("-d", "--depth", default=1, type=int, help="depth of recursive. (default: %(default)s)")
+    parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
+    parser.add_argument("-t", "--tag", nargs=2, action="append", metavar=("IDX", "TAG"), help="display with tag.")
+    parser.add_argument("-u", "--uniq", action="store_true", help="display with uniq.")
+    parser.add_argument("-l", "--list-head", action="store_true", help="display list_head or not.")
+    parser.add_argument("-p", "--phys", action="store_true", help="treat ADDRESS as a physical address.")
     parser.add_argument("-s", "--slab-contains", action="store_true", help="display slab_cache name if available.")
     parser.add_argument("-S", "--slab-contains-unaligned", action="store_true",
                         help="display slab_cache name (allow unaligned) if available.")
-    parser.add_argument("-l", "--list-head", action="store_true", help="display list_head or not.")
-    parser.add_argument("-p", "--phys", action="store_true", help="treat ADDRESS as a physical address.")
-    parser.add_argument("-u", "--uniq", action="store_true", help="display with uniq.")
-    parser.add_argument("-a", "--is-addr", action="store_true", help="display only valid address.")
-    parser.add_argument("-A", "--is-not-addr", action="store_true", help="display only invalid address.")
-    parser.add_argument("-t", "--tag", nargs=2, action="append", metavar=("IDX", "TAG"), help="display with tag.")
-    parser.add_argument("-d", "--depth", default=1, type=int, help="depth of reference. (default: %(default)s)")
-    parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -28370,6 +29203,8 @@ class DereferenceCommand(GenericCommand):
         for regname in DereferenceCommand.get_target_registers():
             regvalue = get_register(regname)
             if regvalue is None:
+                continue
+            if regvalue == 0: # too noisy, so skip
                 continue
             regs.append((regname, regvalue))
         return regs
@@ -28567,7 +29402,7 @@ class DereferenceCommand(GenericCommand):
                     cmd = "dereference --depth {:d} --no-pager {:#x} {:#x}".format(args.depth - 1, v, nb_lines)
                     ret = gdb.execute(cmd, to_string=True)
                     for line in ret.splitlines():
-                        out.append("    " + line)
+                        out.append("      " + line)
 
         if args.reverse:
             out.reverse()
@@ -28579,6 +29414,7 @@ class DereferenceCommand(GenericCommand):
 @register_command
 class ASLRCommand(GenericCommand):
     """View / modify the ASLR setting of GDB."""
+
     _cmdline_ = "aslr"
     _category_ = "02-f. Process Information - Security"
 
@@ -28613,6 +29449,7 @@ class ASLRCommand(GenericCommand):
 @register_command
 class FollowCommand(GenericCommand):
     """View / modify the follow-fork-mode setting of GDB."""
+
     _cmdline_ = "follow"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -28643,6 +29480,7 @@ class FollowCommand(GenericCommand):
 @register_command
 class SmartCppFunctionNameCommand(GenericCommand):
     """Toggle the setting of `context.smart_cpp_function_name`."""
+
     _cmdline_ = "smart-cpp-function-name"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28662,6 +29500,7 @@ class SmartCppFunctionNameCommand(GenericCommand):
 @register_command
 class ContextExtraCommand(GenericCommand):
     """The base command to add, remove, list or clear user specified command to context-extra."""
+
     _cmdline_ = "context-extra"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28690,6 +29529,7 @@ class ContextExtraCommand(GenericCommand):
 @register_command
 class ContextExtraAddCommand(ContextExtraCommand):
     """Add user specified command to execute when each step."""
+
     _cmdline_ = "context-extra add"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["context-extra set"]
@@ -28707,6 +29547,7 @@ class ContextExtraAddCommand(ContextExtraCommand):
 @register_command
 class ContextExtraListCommand(ContextExtraCommand):
     """List user specified command to execute when each step."""
+
     _cmdline_ = "context-extra list"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["context-extra ls"]
@@ -28727,6 +29568,7 @@ class ContextExtraListCommand(ContextExtraCommand):
 @register_command
 class ContextExtraRemoveCommand(ContextExtraCommand):
     """Remove user specified command to execute when each step."""
+
     _cmdline_ = "context-extra remove"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["context-extra del", "context-extra unset", "context-extra rm"]
@@ -28748,6 +29590,7 @@ class ContextExtraRemoveCommand(ContextExtraCommand):
 @register_command
 class ContextExtraClearCommand(ContextExtraCommand):
     """clear all user specified commands to execute when each step."""
+
     _cmdline_ = "context-extra clear"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28764,6 +29607,7 @@ class ContextExtraClearCommand(ContextExtraCommand):
 @register_command
 class CommentCommand(GenericCommand):
     """The base command to add, remove, list or clear the comment."""
+
     _cmdline_ = "comment"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28794,6 +29638,7 @@ class CommentCommand(GenericCommand):
 @register_command
 class CommentAddCommand(CommentCommand):
     """Add a comment to specific address."""
+
     _cmdline_ = "comment add"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment set"]
@@ -28814,6 +29659,7 @@ class CommentAddCommand(CommentCommand):
 @register_command
 class CommentLsCommand(CommentCommand):
     """List the comments."""
+
     _cmdline_ = "comment list"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment ls"]
@@ -28835,6 +29681,7 @@ class CommentLsCommand(CommentCommand):
 @register_command
 class CommentRemoveCommand(CommentCommand):
     """Remove the specified comment."""
+
     _cmdline_ = "comment remove"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment del", "comment unset", "comment rm"]
@@ -28866,6 +29713,7 @@ class CommentRemoveCommand(CommentCommand):
 @register_command
 class CommentClearCommand(CommentCommand):
     """Clear all comments."""
+
     _cmdline_ = "comment clear"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment reset"]
@@ -28882,6 +29730,7 @@ class CommentClearCommand(CommentCommand):
 @register_command
 class VMMapCommand(GenericCommand, BufferingOutput):
     """Display a comprehensive layout of the virtual memory mapping."""
+
     _cmdline_ = "vmmap"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -28900,6 +29749,7 @@ class VMMapCommand(GenericCommand, BufferingOutput):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("kgdb",))
+    @exclude_specific_arch(arch=("ARM32M",))
     def do_invoke(self, args):
         if is_qemu_system() or is_vmware():
             info("Redirect to pagewalk (args are ignored)")
@@ -29021,6 +29871,7 @@ class VMMapCommand(GenericCommand, BufferingOutput):
 @register_command
 class XFilesCommand(GenericCommand):
     """Display all libraries (and sections) loaded by binary."""
+
     _cmdline_ = "xfiles"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -29061,6 +29912,7 @@ class XFilesCommand(GenericCommand):
 @register_command
 class XInfoCommand(GenericCommand):
     """Retrieve and display runtime information for the location(s) given as parameter."""
+
     _cmdline_ = "xinfo"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -29153,6 +30005,7 @@ class XInfoCommand(GenericCommand):
 @register_command
 class XorMemoryCommand(GenericCommand):
     """The base command to XOR a block of memory."""
+
     _cmdline_ = "xor-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -29179,6 +30032,7 @@ class XorMemoryCommand(GenericCommand):
 @register_command
 class XorMemoryDisplayCommand(GenericCommand):
     """Display a block of memory by xor-ing each byte with specified key."""
+
     _cmdline_ = "xor-memory display"
     _category_ = "03-d. Memory - Calculation"
 
@@ -29221,6 +30075,7 @@ class XorMemoryDisplayCommand(GenericCommand):
 @register_command
 class XorMemoryPatchCommand(GenericCommand):
     """Patch a block of memory by xor-ing each byte with specified key."""
+
     _cmdline_ = "xor-memory patch"
     _category_ = "03-d. Memory - Calculation"
 
@@ -29258,6 +30113,7 @@ class XorMemoryPatchCommand(GenericCommand):
 @register_command
 class PatternCommand(GenericCommand):
     """The base command to create or search a De Bruijn cyclic pattern (used pwntools)."""
+
     _cmdline_ = "pattern"
     _category_ = "09-c. Misc - Generation"
 
@@ -29284,6 +30140,7 @@ class PatternCommand(GenericCommand):
 @register_command
 class PatternCreateCommand(GenericCommand):
     """Generate a de Bruijn cyclic pattern."""
+
     _cmdline_ = "pattern create"
     _category_ = "09-c. Misc - Generation"
     _aliases_ = ["pattc"]
@@ -29345,6 +30202,7 @@ class PatternCreateCommand(GenericCommand):
 @register_command
 class PatternSearchCommand(GenericCommand):
     """Search for the cyclic de Bruijn pattern generated by the `pattern create` command."""
+
     _cmdline_ = "pattern search"
     _category_ = "09-c. Misc - Generation"
     _aliases_ = ["patto"]
@@ -29427,6 +30285,7 @@ class PatternSearchCommand(GenericCommand):
 @register_command
 class SigreturnCommand(GenericCommand):
     """Display stack values for sigreturn syscall."""
+
     _cmdline_ = "sigreturn"
     _category_ = "03-b. Memory - View"
 
@@ -29627,6 +30486,7 @@ class SigreturnCommand(GenericCommand):
 @register_command
 class SropHintCommand(GenericCommand):
     """Hint for sigreturn oriented programming."""
+
     _cmdline_ = "srop-hint"
     _category_ = "09-d. Misc - Show Example"
 
@@ -29802,6 +30662,7 @@ class SropHintCommand(GenericCommand):
 @register_command
 class Ret2dlHintCommand(GenericCommand):
     """Hint for return-to-dl-resolve."""
+
     _cmdline_ = "ret2dl-hint"
     _category_ = "09-d. Misc - Show Example"
 
@@ -29910,6 +30771,7 @@ class Ret2dlHintCommand(GenericCommand):
 @register_command
 class LinkMapCommand(GenericCommand):
     """Dump useful members of link_map with iterating."""
+
     _cmdline_ = "link-map"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -30109,6 +30971,7 @@ class LinkMapCommand(GenericCommand):
 @register_command
 class DynamicCommand(GenericCommand):
     """Display current status of the _DYNAMIC area."""
+
     _cmdline_ = "dynamic"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -30411,6 +31274,7 @@ class DynamicCommand(GenericCommand):
 @register_command
 class DestructorDumpCommand(GenericCommand):
     """Display registered destructor functions."""
+
     _cmdline_ = "dtor-dump"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -31093,10 +31957,254 @@ class DestructorDumpCommand(GenericCommand):
             os.unlink(tmp_filepath)
         return
 
+@register_command
+class StandardIoCommand(GenericCommand, BufferingOutput):
+    """Dump members of stdin/stdout/stderr."""
+
+    _cmdline_ = "stdio-dump"
+    _category_ = "02-e. Process Information - Complex Structure Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", nargs="*", type=AddressUtil.parse_address,
+                        help="the elf address to parse (default: stdin, stdout, stderr).")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    def get_offset(self, member_name, member_defines):
+        sizes, names = zip(*member_defines)
+        member_idx = names.index(member_name)
+        member_offset = sum(sizes[:member_idx])
+        return member_offset
+
+    def get_size(self, member_name, member_defines):
+        sizes, names = zip(*member_defines)
+        member_idx = names.index(member_name)
+        member_size = sizes[member_idx]
+        return member_size
+
+    def process_member(self, member_name, member_defines, struct_array):
+        # member name
+        if not member_name:
+            return
+        elif member_name == "__addr__":
+            member_offset = 0
+            member_size = current_arch.ptrsize
+            msg = "{:>5s} | {:16s}: ".format("off", "member")
+        else:
+            member_offset = self.get_offset(member_name, member_defines)
+            member_size = self.get_size(member_name, member_defines)
+            msg = "{:+#05x} | {:16s}: ".format(member_offset, member_name)
+
+        # member of each struct
+        for st in struct_array:
+            member_addr = st + member_offset
+            if member_name == "__addr__":
+                address_obj = ProcessMap.lookup_address(st)
+                sym = Symbol.get_symbol_string(st)
+                msg += "{:s}{:24s} ".format(address_obj.long_fmt(), sym)
+            elif not is_valid_addr(member_addr):
+                msg += "{:{:d}s}{:24s} ".format("", [10, 18][is_64bit()], "")
+            elif member_size == current_arch.ptrsize:
+                val = read_int_from_memory(member_addr)
+                address_obj = ProcessMap.lookup_address(val)
+                sym = Symbol.get_symbol_string(val)
+                msg += "{:s}{:24s} ".format(address_obj.long_fmt(), sym)
+            elif member_size == 8:
+                val = u64(read_memory(member_addr, 8))
+                val_s = "{:#018x}".format(val)
+                msg += "{:s}{:{:d}s} ".format(val_s, "", [16, 24][is_64bit()])
+            elif member_size == 4:
+                val = u32(read_memory(member_addr, 4))
+                val_s = "{:#010x}".format(val)
+                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+            elif member_size == 2:
+                val = u16(read_memory(member_addr, 2))
+                val_s = "{:#06x}".format(val)
+                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+            elif member_size == 1:
+                val = u8(read_memory(member_addr, 1))
+                val_s = "{:#04x}".format(val)
+                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+            else:
+                msg += "{:{:d}s}{:24s} ".format("...", [10, 18][is_64bit()], "")
+
+        self.out.append(msg.rstrip())
+        return
+
+    def stdio_dump(self, struct_io_file_array):
+        self.process_member("__addr__", None, struct_io_file_array)
+
+        # _IO_FILE
+        self.out.append(titlify("FILE"))
+        struct_io_file_member = [
+            [4,                    "_flags"],
+            [[0, 4][is_64bit()],   ""],
+            [current_arch.ptrsize, "_IO_read_ptr"],
+            [current_arch.ptrsize, "_IO_read_end"],
+            [current_arch.ptrsize, "_IO_read_base"],
+            [current_arch.ptrsize, "_IO_write_base"],
+            [current_arch.ptrsize, "_IO_write_ptr"],
+            [current_arch.ptrsize, "_IO_write_end"],
+            [current_arch.ptrsize, "_IO_buf_base"],
+            [current_arch.ptrsize, "_IO_buf_end"],
+            [current_arch.ptrsize, "_IO_save_base"],
+            [current_arch.ptrsize, "_IO_backup_base"],
+            [current_arch.ptrsize, "_IO_save_end"],
+            [current_arch.ptrsize, "_markers"],
+            [current_arch.ptrsize, "_chain"],
+            [4,                    "_fileno"],
+            [4,                    "_flags2"],
+            [current_arch.ptrsize, "_old_offset"],
+            [2,                    "_cur_column"],
+            [1,                    "_vtable_offset"],
+            [1,                    "_shortbuf"],
+            [[0, 4][is_64bit()],   ""],
+            [current_arch.ptrsize, "_lock"],
+            [8,                    "_offset"],
+            [current_arch.ptrsize, "_codecvt"],
+            [current_arch.ptrsize, "_wide_data"],
+            [current_arch.ptrsize, "_freeres_list"],
+            [current_arch.ptrsize, "_freeres_buf"],
+            [current_arch.ptrsize, "__pad5"],
+            [4,                    "_mode"],
+            [[40, 20][is_64bit()], "_unused2"],
+            [current_arch.ptrsize, "vtable"],
+        ]
+        for _, m in struct_io_file_member:
+            self.process_member(m, struct_io_file_member, struct_io_file_array)
+
+        # vtable
+        self.out.append(titlify("FILE->vtable"))
+        vtable_offset = self.get_offset("vtable", struct_io_file_member)
+        struct_io_jump_t_array = []
+        for x in struct_io_file_array:
+            vtable_addr = x + vtable_offset
+            if not is_valid_addr(vtable_addr):
+                struct_io_jump_t_array.append(0)
+            else:
+                vtable = read_int_from_memory(vtable_addr)
+                if not is_valid_addr(vtable):
+                    struct_io_jump_t_array.append(0)
+                else:
+                    struct_io_jump_t_array.append(vtable)
+        struct_io_jump_t_member = [
+            [current_arch.ptrsize, "__dummy"],
+            [current_arch.ptrsize, "__dummy2"],
+            [current_arch.ptrsize, "__finish"],
+            [current_arch.ptrsize, "__overflow"],
+            [current_arch.ptrsize, "__underflow"],
+            [current_arch.ptrsize, "__uflow"],
+            [current_arch.ptrsize, "__pbackfail"],
+            [current_arch.ptrsize, "__xsputn"],
+            [current_arch.ptrsize, "__xsgetn"],
+            [current_arch.ptrsize, "__seekoff"],
+            [current_arch.ptrsize, "__seekpos"],
+            [current_arch.ptrsize, "__setbuf"],
+            [current_arch.ptrsize, "__sync"],
+            [current_arch.ptrsize, "__doallocate"],
+            [current_arch.ptrsize, "__read"],
+            [current_arch.ptrsize, "__write"],
+            [current_arch.ptrsize, "__seek"],
+            [current_arch.ptrsize, "__close"],
+            [current_arch.ptrsize, "__stat"],
+            [current_arch.ptrsize, "__showmanyc"],
+            [current_arch.ptrsize, "__imbue"],
+        ]
+        for _, m in struct_io_jump_t_member:
+            self.process_member(m, struct_io_jump_t_member, struct_io_jump_t_array)
+
+        # wide_data
+        self.out.append(titlify("FILE->_wide_data"))
+        wide_data_offset = self.get_offset("_wide_data", struct_io_file_member)
+        struct_io_wide_data_array = []
+        for x in struct_io_file_array:
+            wide_data_addr = x + wide_data_offset
+            if not is_valid_addr(wide_data_addr):
+                struct_io_wide_data_array.append(0)
+            else:
+                wide_data = read_int_from_memory(wide_data_addr)
+                if not is_valid_addr(wide_data):
+                    struct_io_wide_data_array.append(0)
+                else:
+                    struct_io_wide_data_array.append(wide_data)
+        struct_io_wide_data_member = [
+            [current_arch.ptrsize,     "_IO_read_ptr"],
+            [current_arch.ptrsize,     "_IO_read_end"],
+            [current_arch.ptrsize,     "_IO_read_base"],
+            [current_arch.ptrsize,     "_IO_write_base"],
+            [current_arch.ptrsize,     "_IO_write_ptr"],
+            [current_arch.ptrsize,     "_IO_write_end"],
+            [current_arch.ptrsize,     "_IO_buf_base"],
+            [current_arch.ptrsize,     "_IO_buf_end"],
+            [current_arch.ptrsize,     "_IO_save_base"],
+            [current_arch.ptrsize,     "_IO_backup_base"],
+            [current_arch.ptrsize,     "_IO_save_end"],
+            [8,                        "_IO_state"],
+            [8,                        "_IO_last_state"],
+            [[0x48, 0x70][is_64bit()], "_codecvt"],
+            [4,                        "_shortbuf"],
+            [[0, 4][is_64bit()],       ""],
+            [current_arch.ptrsize,     "_wide_vtable"],
+        ]
+        for _, m in struct_io_wide_data_member:
+            self.process_member(m, struct_io_wide_data_member, struct_io_wide_data_array)
+
+        # wide_data vtable
+        self.out.append(titlify("FILE->_wide_data->_wide_vtable"))
+        wide_data_vtable_offset = self.get_offset("_wide_vtable", struct_io_wide_data_member)
+        struct_io_wide_data_jump_t_array = []
+        for x in struct_io_wide_data_array:
+            wide_data_vtable_addr = x + wide_data_vtable_offset
+            if not is_valid_addr(wide_data_vtable_addr):
+                struct_io_wide_data_jump_t_array.append(0)
+            else:
+                wide_data_vtable = read_int_from_memory(wide_data_vtable_addr)
+                if not is_valid_addr(wide_data_vtable):
+                    struct_io_wide_data_jump_t_array.append(0)
+                else:
+                    struct_io_wide_data_jump_t_array.append(wide_data_vtable)
+        for _, m in struct_io_jump_t_member:
+            self.process_member(m, struct_io_jump_t_member, struct_io_wide_data_jump_t_array)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        if args.address:
+            struct_io_file_array = []
+            for x in args.address:
+                if not is_valid_addr(x):
+                    err("Read memory error")
+                    return
+                struct_io_file_array.append(x)
+        else:
+            stdin = AddressUtil.parse_address("stdin")
+            if stdin is None or not is_valid_addr(stdin):
+                err("Not found stdin")
+                return
+
+            stdout = AddressUtil.parse_address("stdout")
+            if stdout is None or not is_valid_addr(stdout):
+                err("Not found stdout")
+                return
+
+            stderr = AddressUtil.parse_address("stderr")
+            if stderr is None or not is_valid_addr(stderr):
+                err("Not found stderr")
+                return
+            struct_io_file_array = [stdin, stdout, stderr]
+
+        self.out = []
+        self.stdio_dump(struct_io_file_array)
+        self.print_output(args, term=True)
+        return
+
 
 @register_command
 class GotCommand(GenericCommand):
     """Display current status of the got/plt inside the process."""
+
     _cmdline_ = "got"
     _category_ = "02-e. Process Information - Complex Structure Information"
     _aliases_ = ["plt"]
@@ -31301,7 +32409,7 @@ class GotCommand(GenericCommand):
             else:
                 fmt = "{:<{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
                 legend = [
-                    "Name", name_width,  VERTICAL_LINE,
+                    "Name", name_width, VERTICAL_LINE,
                     "PLT", width, VERTICAL_LINE,
                     "GOT", width, VERTICAL_LINE, "GOT value", width,
                 ]
@@ -31569,11 +32677,14 @@ class GotCommand(GenericCommand):
 @register_command
 class GotAllCommand(GenericCommand):
     """Show got entries for all libraries."""
+
     _cmdline_ = "got-all"
     _category_ = "02-e. Process Information - Complex Structure Information"
     _aliases_ = ["plt-all"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-r", "--remote", action="store_true",
+                        help="parse remote binary if download feature is available.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
@@ -31581,11 +32692,11 @@ class GotAllCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         verbose = ["", "-v"][args.verbose]
-        extra_args = "{:s} {:s}".format(verbose, " ".join(args.filter))
+        remote = ["", "-r"][args.remote]
+        extra_args = "{:s} {:s} {:s}".format(verbose, remote, " ".join(args.filter))
 
         self.out = []
         processed = []
@@ -31603,10 +32714,9 @@ class GotAllCommand(GenericCommand):
             if x != b"\x7fELF":
                 continue
 
-            ret = gdb.execute("got -f {:s} -n {:s}".format(m.path, extra_args), to_string=True)
-            if "<" in Color.remove_color(ret): # at least one element is hit
-                self.out.extend(ret.splitlines())
-                self.out.append("")
+            ret = gdb.execute("got -f {!r} -n {:s}".format(m.path, extra_args), to_string=True)
+            self.out.extend(ret.splitlines())
+            self.out.append("")
             processed.append(m.path)
 
         if len(self.out) > GefUtil.get_terminal_size()[0]:
@@ -31618,8 +32728,10 @@ class GotAllCommand(GenericCommand):
 
 class FormatStringBreakpoint(gdb.Breakpoint):
     """Inspect stack for format string."""
-    def __init__(self, spec, num_args):
-        super().__init__(spec, type=gdb.BP_BREAKPOINT, internal=False)
+
+    def __init__(self, func_address, func_name, num_args):
+        super().__init__("*{:#x}".format(func_address), type=gdb.BP_BREAKPOINT, internal=False)
+        self.func_name = func_name
         self.num_args = num_args
         self.enabled = True
         return
@@ -31638,11 +32750,12 @@ class FormatStringBreakpoint(gdb.Breakpoint):
             content = String.gef_pystring(String.str2bytes(content))
             name = addr.info.name if addr.info else addr.section.path
             msg.append(Color.colorify("Format string helper", "bold yellow"))
-            m = "Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')"
-            msg.append(m.format(self.location, ptr, RIGHT_ARROW, addr.value, content))
-            m = "Reason: Call to '{:s}()' with format string argument in position "
-            m += "#{:d} is in page {:#x} ({:s}) that has write permission"
-            msg.append(m.format(self.location, self.num_args, addr.section.page_start, name))
+            msg.append("Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')".format(
+                self.func_name, ptr, RIGHT_ARROW, addr.value, content,
+            ))
+            msg.append("Reason: '{:s}()' with format-string arg #{:d} is in writable page {:s} ({:s})".format(
+                self.func_name, self.num_args, str(addr), name,
+            ))
             ContextCommand.push_context_message("warn", "\n".join(msg))
             return True
         return False
@@ -31651,6 +32764,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
 @register_command
 class FormatStringSearchCommand(GenericCommand):
     """The helper to search exploitable format-string."""
+
     _cmdline_ = "format-string-helper"
     _category_ = "01-g. Debugging Support - Other"
     _aliases_ = ["fmtstr-helper"]
@@ -31658,107 +32772,108 @@ class FormatStringSearchCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
+    dangerous_functions = {
+        "printf": 0,                # int printf(const char *fmt, ...);
+        "fprintf": 1,               # int fprintf(FILE *stream, const char *fmt, ...);
+        "dprintf": 1,               # int dprintf(int fd, const char *fmt, ...);
+        "sprintf": 1,               # int sprintf(char *str, const char *fmt, ...);
+        "asprintf": 1,              # int asprintf(char **strp, const char *fmt, ...);
+        "snprintf": 2,              # int snprintf(char *str, size_t size, const char *fmt, ...);
+        "wprintf": 0,               # int wprintf(const wchar_t *fmt, ...);
+        "fwprintf": 1,              # int fwprintf(FILE *stream, const wchar_t *fmt, ...);
+        "swprintf": 2,              # int swprintf(wchar_t *str, size_t n, const wchar_t *fmt, ...);
+        "obstack_printf": 1,        # int obstack_printf(struct obstack *obstack, const char *fmt, ...);
+        "__printf_chk": 1,          # int __printf_chk(int flag, const char *fmt);
+        "__fprintf_chk": 2,         # int __fprintf_chk(FILE *stream, int flag, const char *fmt, ...);
+        "__dprintf_chk": 2,         # int __dprintf_chk(int d, int flags, const char *fmt, ...)
+        "__sprintf_chk": 3,         # int __sprintf_chk(char *str, int flag, size_t strlen, const char *fmt, ...);
+        "__asprintf_chk": 2,        # int __asprintf_chk(char **strp, int flag, const char *fmt, ...)
+        "__snprintf_chk": 4,        # int __snprintf_chk(char *str, size_t maxlen, int flag, size_t strlen, const char *fmt, ...);
+        "__wprintf_chk": 1,         # int __wprintf_chk(int flag, const wchar_t *format, ...);
+        "__fwprintf_chk": 2,        # int __fwprintf_chk(FILE *stream, int flag, const wchar_t *format, ...);
+        "__swprintf_chk": 4,        # int __swprintf_chk(wchar_t *str, size_t maxlen, int flag, size_t slen, const wchar_t *fmt, ...);
+        "__obstack_printf_chk": 2,  # int __obstack_printf_chk(struct obstack *obstack, int flag, const char *fmt, ...);
+
+        "vprintf": 0,               # int vprintf(const char *fmt, va_list ap);
+        "vfprintf": 1,              # int vfprintf(FILE *stream, const char *fmt, va_list ap);
+        "vdprintf": 1,              # int vdprintf(int fd, const char *fmt, va_list ap);
+        "vsprintf": 1,              # int vsprintf(char *str, const char *fmt, va_list ap);
+        "vasprintf": 1,             # int vasprintf(char **strp, const char *fmt, va_list ap);
+        "vsnprintf": 2,             # int vsnprintf(char *str, size_t size, const char *fmt, va_list ap);
+        "vwprintf": 0,              # int vwprintf(const wchar_t *fmt, va_list ap);
+        "vfwprintf": 1,             # int vfwprintf(FILE *stream, const wchar_t *fmt, va_list ap);
+        "vswprintf": 2,             # int vswprintf(wchar_t *str, size_t maxlen, const wchar_t *fmt, va_list ap);
+        "obstack_vprintf": 1,       # int obstack_vprintf(struct obstack *obstack, const char *fmt, va_list ap);
+        "__vprintf_chk": 1,         # int __vprintf_chk(int flag, const char *fmt, va_list ap);
+        "__vfprintf_chk": 2,        # int __vfprintf_chk(FILE *stream, int flag, const char *fmt, va_list ap);
+        "__vdprintf_chk": 2,        # int __vdprintf_chk(int d, int flag, const char *fmt, va_list ap);
+        "__vsprintf_chk": 3,        # int __vsprintf_chk(char *str, int flag, size_t slen, const char *fmt, va_list ap);
+        "__vasprintf_chk": 2,       # int __vasprintf_chk(char **strp, int flag, const char *fmt, va_list ap);
+        "__vsnprintf_chk": 4,       # int __vsnprintf_chk(char *str, size_t maxlen, int flag, size_t slen, const char *fmt, va_list ap);
+        "__vwprintf_chk": 1,        # int __vwprintf_chk(int flag, const wchar_t *fmt, va_list ap);
+        "__vfwprintf_chk": 2,       # int __vfwprintf_chk(FILE *stream, int flag, const wchar_t *fmt, va_list ap);
+        "__vswprintf_chk": 4,       # int __vswprintf_chk(wchar_t *str, size_t maxlen, int flag, size_t slen, const wchar_t *fmt, va_list ap);
+        "__obstack_vprintf_chk": 2, # int __obstack_vprintf_chk(struct obstack *obstack, int flag, const char *fmt, va_list ap);
+
+        "syslog": 1,                # void syslog(int priority, const char *fmt, ...);
+        "vsyslog": 1,               # void vsyslog(int priority, const char *fmt, va_list ap);
+        "__syslog_chk": 2,          # void __syslog_chk(int priority, int flag, const char *fmt, ...);
+        "__vsyslog_chk": 2,         # void __vsyslog_chk(int priority, int flag, const char *fmt, va_list ap);
+
+        "scanf": 0,                 # int scanf(const char *fmt, ...);
+        "fscanf": 1,                # int fscanf(FILE *stream, const char *fmt, ...);
+        "sscanf": 1,                # int sscanf(const char *str, const char *fmt, ...);
+        "wscanf": 0,                # int wscanf(const wchar_t *fmt, ...);
+        "fwscanf": 1,               # int fwscanf(FILE *stream, const wchar_t *fmt, ...);
+        "swscanf": 1,               # int swscanf(const wchar_t *ws, const wchar_t *fmt, ...);
+
+        "vscanf": 0,                # int vscanf(const char *fmt, va_list ap);
+        "vfscanf": 1,               # int vfscanf(FILE *stream, const char *fmt, va_list ap);
+        "vsscanf": 1,               # int vsscanf(const char *str, const char *fmt, va_list ap);
+        "vwscanf": 0,               # int vwscanf(const wchar_t *fmt, va_list ap);
+        "vfwscanf": 1,              # int vfwscanf(FILE *stream, const wchar_t *fmt, va_list ap);
+        "vswscanf": 1,              # int vswscanf(const wchar_t *s, const wchar_t *fmt, va_list ap);
+
+        "warn": 0,                  # void warn(const char *fmt, ...);
+        "warnx": 0,                 # void warnx(const char *fmt, ...);
+        "err": 1,                   # void err(int status, const char *fmt, ...);
+        "errx": 1,                  # void errx(int status, const char *fmt, ...);
+
+        "vwarn": 0,                 # void vwarn(const char *fmt, va_list ap);
+        "vwarnx": 0,                # void vwarnx(const char *fmt, va_list ap);
+        "verr": 1,                  # void verr(int status, const char *fmt, va_list ap);
+        "verrx": 1,                 # void verrx(int status, const char *fmt, va_list ap);
+
+        "error": 2,                 # void error(int status, int errnum, const char *fmt, ...);
+        "error_at_line": 4,         # void error_at_line(int status, int errnum, const char *filename, uint linenum, const char *fmt, ...);
+
+        "argp_error": 1,            # void argp_error(const struct argp_state *state, const char *fmt, ...);
+        "argp_failure": 3,          # void argp_failure(const struct argp_state *state, int status, int errnum, const char *fmt, ...);
+
+        "xasprintf": 0,             # char* xasprintf(const char *fmt, ...);
+        "xvasprintf": 0,            # char* xvasprintf(const char *fmt, va_list ap);
+    }
+
     @parse_args
     @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
-        dangerous_functions = {
-            "printf": 0,                # int printf(const char *fmt, ...);
-            "fprintf": 1,               # int fprintf(FILE *stream, const char *fmt, ...);
-            "dprintf": 1,               # int dprintf(int fd, const char *fmt, ...);
-            "sprintf": 1,               # int sprintf(char *str, const char *fmt, ...);
-            "asprintf": 1,              # int asprintf(char **strp, const char *fmt, ...);
-            "snprintf": 2,              # int snprintf(char *str, size_t size, const char *fmt, ...);
-            "wprintf": 0,               # int wprintf(const wchar_t *fmt, ...);
-            "fwprintf": 1,              # int fwprintf(FILE *stream, const wchar_t *fmt, ...);
-            "swprintf": 2,              # int swprintf(wchar_t *str, size_t n, const wchar_t *fmt, ...);
-            "obstack_printf": 1,        # int obstack_printf(struct obstack *obstack, const char *fmt, ...);
-            "__printf_chk": 1,          # int __printf_chk(int flag, const char *fmt);
-            "__fprintf_chk": 2,         # int __fprintf_chk(FILE *stream, int flag, const char *fmt, ...);
-            "__dprintf_chk": 2,         # int __dprintf_chk(int d, int flags, const char *fmt, ...)
-            "__sprintf_chk": 3,         # int __sprintf_chk(char *str, int flag, size_t strlen, const char *fmt, ...);
-            "__asprintf_chk": 2,        # int __asprintf_chk(char **strp, int flag, const char *fmt, ...)
-            "__snprintf_chk": 4,        # int __snprintf_chk(char *str, size_t maxlen, int flag, size_t strlen, const char *fmt, ...);
-            "__wprintf_chk": 1,         # int __wprintf_chk(int flag, const wchar_t *format, ...);
-            "__fwprintf_chk": 2,        # int __fwprintf_chk(FILE *stream, int flag, const wchar_t *format, ...);
-            "__swprintf_chk": 4,        # int __swprintf_chk(wchar_t *str, size_t maxlen, int flag, size_t slen, const wchar_t *fmt, ...);
-            "__obstack_printf_chk": 2,  # int __obstack_printf_chk(struct obstack *obstack, int flag, const char *fmt, ...);
-
-            "vprintf": 0,               # int vprintf(const char *fmt, va_list ap);
-            "vfprintf": 1,              # int vfprintf(FILE *stream, const char *fmt, va_list ap);
-            "vdprintf": 1,              # int vdprintf(int fd, const char *fmt, va_list ap);
-            "vsprintf": 1,              # int vsprintf(char *str, const char *fmt, va_list ap);
-            "vasprintf": 1,             # int vasprintf(char **strp, const char *fmt, va_list ap);
-            "vsnprintf": 2,             # int vsnprintf(char *str, size_t size, const char *fmt, va_list ap);
-            "vwprintf": 0,              # int vwprintf(const wchar_t *fmt, va_list ap);
-            "vfwprintf": 1,             # int vfwprintf(FILE *stream, const wchar_t *fmt, va_list ap);
-            "vswprintf": 2,             # int vswprintf(wchar_t *str, size_t maxlen, const wchar_t *fmt, va_list ap);
-            "obstack_vprintf": 1,       # int obstack_vprintf(struct obstack *obstack, const char *fmt, va_list ap);
-            "__vprintf_chk": 1,         # int __vprintf_chk(int flag, const char *fmt, va_list ap);
-            "__vfprintf_chk": 2,        # int __vfprintf_chk(FILE *stream, int flag, const char *fmt, va_list ap);
-            "__vdprintf_chk": 2,        # int __vdprintf_chk(int d, int flag, const char *fmt, va_list ap);
-            "__vsprintf_chk": 3,        # int __vsprintf_chk(char *str, int flag, size_t slen, const char *fmt, va_list ap);
-            "__vasprintf_chk": 2,       # int __vasprintf_chk(char **strp, int flag, const char *fmt, va_list ap);
-            "__vsnprintf_chk": 4,       # int __vsnprintf_chk(char *str, size_t maxlen, int flag, size_t slen, const char *fmt, va_list ap);
-            "__vwprintf_chk": 1,        # int __vwprintf_chk(int flag, const wchar_t *fmt, va_list ap);
-            "__vfwprintf_chk": 2,       # int __vfwprintf_chk(FILE *stream, int flag, const wchar_t *fmt, va_list ap);
-            "__vswprintf_chk": 4,       # int __vswprintf_chk(wchar_t *str, size_t maxlen, int flag, size_t slen, const wchar_t *fmt, va_list ap);
-            "__obstack_vprintf_chk": 2, # int __obstack_vprintf_chk(struct obstack *obstack, int flag, const char *fmt, va_list ap);
-
-            "syslog": 1,                # void syslog(int priority, const char *fmt, ...);
-            "vsyslog": 1,               # void vsyslog(int priority, const char *fmt, va_list ap);
-            "__syslog_chk": 2,          # void __syslog_chk(int priority, int flag, const char *fmt, ...);
-            "__vsyslog_chk": 2,         # void __vsyslog_chk(int priority, int flag, const char *fmt, va_list ap);
-
-            "scanf": 0,                 # int scanf(const char *fmt, ...);
-            "fscanf": 1,                # int fscanf(FILE *stream, const char *fmt, ...);
-            "sscanf": 1,                # int sscanf(const char *str, const char *fmt, ...);
-            "wscanf": 0,                # int wscanf(const wchar_t *fmt, ...);
-            "fwscanf": 1,               # int fwscanf(FILE *stream, const wchar_t *fmt, ...);
-            "swscanf": 1,               # int swscanf(const wchar_t *ws, const wchar_t *fmt, ...);
-
-            "vscanf": 0,                # int vscanf(const char *fmt, va_list ap);
-            "vfscanf": 1,               # int vfscanf(FILE *stream, const char *fmt, va_list ap);
-            "vsscanf": 1,               # int vsscanf(const char *str, const char *fmt, va_list ap);
-            "vwscanf": 0,               # int vwscanf(const wchar_t *fmt, va_list ap);
-            "vfwscanf": 1,              # int vfwscanf(FILE *stream, const wchar_t *fmt, va_list ap);
-            "vswscanf": 1,              # int vswscanf(const wchar_t *s, const wchar_t *fmt, va_list ap);
-
-            "warn": 0,                  # void warn(const char *fmt, ...);
-            "warnx": 0,                 # void warnx(const char *fmt, ...);
-            "err": 1,                   # void err(int status, const char *fmt, ...);
-            "errx": 1,                  # void errx(int status, const char *fmt, ...);
-
-            "vwarn": 0,                 # void vwarn(const char *fmt, va_list ap);
-            "vwarnx": 0,                # void vwarnx(const char *fmt, va_list ap);
-            "verr": 1,                  # void verr(int status, const char *fmt, va_list ap);
-            "verrx": 1,                 # void verrx(int status, const char *fmt, va_list ap);
-
-            "error": 2,                 # void error(int status, int errnum, const char *fmt, ...);
-            "error_at_line": 4,         # void error_at_line(int status, int errnum, const char *filename, uint linenum, const char *fmt, ...);
-
-            "argp_error": 1,            # void argp_error(const struct argp_state *state, const char *fmt, ...);
-            "argp_failure": 3,          # void argp_failure(const struct argp_state *state, int status, int errnum, const char *fmt, ...);
-
-            "xasprintf": 0,             # char* xasprintf(const char *fmt, ...);
-            "xvasprintf": 0,            # char* xvasprintf(const char *fmt, va_list ap);
-        }
-
         bp_count = 0
-        for func_name, num_arg in dangerous_functions.items():
+        for func_name, num_arg in self.dangerous_functions.items():
             try:
-                AddressUtil.parse_address(func_name)
+                func_address = AddressUtil.parse_address(func_name)
             except gdb.error:
                 continue
             gef_print(func_name + ": ", end="")
-            FormatStringBreakpoint(func_name, num_arg)
+            FormatStringBreakpoint(func_address, func_name, num_arg)
             bp_count += 1
 
-        ok("Enabled {:d}/{:d} FormatStringBreakpoint".format(bp_count, len(dangerous_functions)))
+        ok("Enabled {:d}/{:d} FormatStringBreakpoint".format(bp_count, len(self.dangerous_functions)))
         return
 
 
 class TraceMallocBreakpoint(gdb.Breakpoint):
     """Track allocations done with malloc() or calloc()."""
+
     def __init__(self, name):
         super().__init__(name, gdb.BP_BREAKPOINT, internal=True)
         self.silent = True
@@ -31781,6 +32896,7 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
 
 class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to retrieve the return value of malloc()."""
+
     def __init__(self, size, name):
         try:
             frame = gdb.newest_frame()
@@ -31876,6 +32992,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
 
 class TraceReallocBreakpoint(gdb.Breakpoint):
     """Track re-allocations done with realloc()."""
+
     def __init__(self):
         super().__init__("__libc_realloc", gdb.BP_BREAKPOINT, internal=True)
         self.silent = True
@@ -31900,6 +33017,7 @@ class TraceReallocBreakpoint(gdb.Breakpoint):
 
 class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to retrieve the return value of realloc()."""
+
     def __init__(self, ptr, size):
         try:
             frame = gdb.newest_frame()
@@ -31965,6 +33083,7 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
 
 class TraceFreeBreakpoint(gdb.Breakpoint):
     """Track calls to free() and attempts to detect inconsistencies."""
+
     def __init__(self):
         super().__init__("__libc_free", gdb.BP_BREAKPOINT, internal=True)
         self.silent = True
@@ -32025,6 +33144,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
 
 class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to track free()d values."""
+
     def __init__(self, ptr):
         super().__init__(gdb.newest_frame(), internal=True)
         self.silent = True
@@ -32049,6 +33169,7 @@ class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
 
 class UafWatchpoint(gdb.Breakpoint):
     """Custom watchpoints set TraceFreeBreakpoint() to monitor free()d pointers being used."""
+
     def __init__(self, ptr):
         super().__init__("*{:#x}".format(ptr), gdb.BP_WATCHPOINT, internal=True)
         self.ptr = ptr
@@ -32081,6 +33202,7 @@ class UafWatchpoint(gdb.Breakpoint):
 @register_command
 class HeapAnalysisCommand(GenericCommand):
     """Trace malloc/free to check heap integrity for Use-after-Free, Double Free, Heap overlap."""
+
     _cmdline_ = "heap-analysis-helper"
     _category_ = "06-a. Heap - Glibc"
 
@@ -32190,6 +33312,7 @@ class HeapAnalysisCommand(GenericCommand):
 @register_command
 class SyscallSearchCommand(GenericCommand):
     """Search the syscall number for specified architecture."""
+
     _cmdline_ = "syscall-search"
     _category_ = "05-b. Syscall - Search"
 
@@ -32284,10 +33407,10 @@ class SyscallSearchCommand(GenericCommand):
         return
 
 
-# System call table (linux-6.5.3)
+# System call table (linux-6.10)
 
 # [How to make]
-# clang-format-15 --style='{BasedOnStyle: Google, ColumnLimit: 1000}' FILENAME | grep ^asmlinkage
+# clang-format --style='{BasedOnStyle: Google, ColumnLimit: 1000}' FILENAME | grep ^asmlinkage
 #   `!` at the beginning of the line: manually fixed the argument information
 #   `#` at the beginning of the line: excluded for reasons such as duplication
 
@@ -32299,8 +33422,8 @@ asmlinkage long sys_io_destroy(aio_context_t ctx);
 asmlinkage long sys_io_cancel(aio_context_t ctx_id, struct iocb __user *iocb, struct io_event __user *result);
 asmlinkage long sys_io_getevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout);
 asmlinkage long sys_io_getevents_time32(__u32 ctx_id, __s32 min_nr, __s32 nr, struct io_event __user *events, struct old_timespec32 __user *timeout);
-asmlinkage long sys_io_pgetevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __aio_sigset *sig);
-asmlinkage long sys_io_pgetevents_time32(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __aio_sigset *sig);
+asmlinkage long sys_io_pgetevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __aio_sigset __user *sig);
+asmlinkage long sys_io_pgetevents_time32(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __aio_sigset __user *sig);
 asmlinkage long sys_io_uring_setup(u32 entries, struct io_uring_params __user *p);
 asmlinkage long sys_io_uring_enter(unsigned int fd, u32 to_submit, u32 min_complete, u32 flags, const void __user *argp, size_t argsz);
 asmlinkage long sys_io_uring_register(unsigned int fd, unsigned int op, void __user *arg, unsigned int nr_args);
@@ -32349,7 +33472,7 @@ asmlinkage long sys_fstatfs64(unsigned int fd, size_t sz, struct statfs64 __user
 asmlinkage long sys_statmount(const struct mnt_id_req __user *req, struct statmount __user *buf, size_t bufsize, unsigned int flags);
 asmlinkage long sys_listmount(const struct mnt_id_req __user *req, u64 __user *mnt_ids, size_t nr_mnt_ids, unsigned int flags);
 asmlinkage long sys_truncate(const char __user *path, long length);
-asmlinkage long sys_ftruncate(unsigned int fd, unsigned long length);
+asmlinkage long sys_ftruncate(unsigned int fd, off_t length);
 asmlinkage long sys_truncate64(const char __user *path, loff_t length);
 asmlinkage long sys_ftruncate64(unsigned int fd, loff_t length);
 asmlinkage long sys_fallocate(int fd, int mode, loff_t offset, loff_t len);
@@ -32364,7 +33487,7 @@ asmlinkage long sys_fchmodat2(int dfd, const char __user *filename, umode_t mode
 asmlinkage long sys_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group, int flag);
 asmlinkage long sys_fchown(unsigned int fd, uid_t user, gid_t group);
 asmlinkage long sys_openat(int dfd, const char __user *filename, int flags, umode_t mode);
-asmlinkage long sys_openat2(int dfd, const char __user *filename, struct open_how *how, size_t size);
+asmlinkage long sys_openat2(int dfd, const char __user *filename, struct open_how __user *how, size_t size);
 asmlinkage long sys_close(unsigned int fd);
 asmlinkage long sys_close_range(unsigned int fd, unsigned int max_fd, unsigned int flags);
 asmlinkage long sys_vhangup(void);
@@ -32421,7 +33544,7 @@ asmlinkage long sys_futex(u32 __user *uaddr, int op, u32 val, const struct __ker
 asmlinkage long sys_futex_time32(u32 __user *uaddr, int op, u32 val, const struct old_timespec32 __user *utime, u32 __user *uaddr2, u32 val3);
 asmlinkage long sys_get_robust_list(int pid, struct robust_list_head __user *__user *head_ptr, size_t __user *len_ptr);
 asmlinkage long sys_set_robust_list(struct robust_list_head __user *head, size_t len);
-asmlinkage long sys_futex_waitv(struct futex_waitv *waiters, unsigned int nr_futexes, unsigned int flags, struct __kernel_timespec __user *timeout, clockid_t clockid);
+asmlinkage long sys_futex_waitv(struct futex_waitv __user *waiters, unsigned int nr_futexes, unsigned int flags, struct __kernel_timespec __user *timeout, clockid_t clockid);
 asmlinkage long sys_futex_wake(void __user *uaddr, unsigned long mask, int nr, unsigned int flags);
 asmlinkage long sys_futex_wait(void __user *uaddr, unsigned long val, unsigned long mask, unsigned int flags, struct __kernel_timespec __user *timespec, clockid_t clockid);
 asmlinkage long sys_futex_requeue(struct futex_waitv __user *waiters, unsigned int flags, int nr_wake, int nr_requeue);
@@ -32592,7 +33715,8 @@ asmlinkage long sys_recvmmsg_time32(int fd, struct mmsghdr __user *msg, unsigned
 asmlinkage long sys_wait4(pid_t pid, int __user *stat_addr, int options, struct rusage __user *ru);
 asmlinkage long sys_prlimit64(pid_t pid, unsigned int resource, const struct rlimit64 __user *new_rlim, struct rlimit64 __user *old_rlim);
 asmlinkage long sys_fanotify_init(unsigned int flags, unsigned int event_f_flags);
-asmlinkage long sys_fanotify_mark(int fanotify_fd, unsigned int flags, u64 mask, int fd, const char __user *pathname);
+#asmlinkage long sys_fanotify_mark(int fanotify_fd, unsigned int flags, unsigned int mask_1, unsigned int mask_2, int dfd, const char __user *pathname);
+#asmlinkage long sys_fanotify_mark(int fanotify_fd, unsigned int flags, u64 mask, int fd, const char __user *pathname);
 asmlinkage long sys_name_to_handle_at(int dfd, const char __user *name, struct file_handle __user *handle, int __user *mnt_id, int flag);
 asmlinkage long sys_open_by_handle_at(int mountdirfd, struct file_handle __user *handle, int flags);
 asmlinkage long sys_clock_adjtime(clockid_t which_clock, struct __kernel_timex __user *tx);
@@ -32611,7 +33735,7 @@ asmlinkage long sys_renameat2(int olddfd, const char __user *oldname, int newdfd
 asmlinkage long sys_seccomp(unsigned int op, unsigned int flags, void __user *uargs);
 asmlinkage long sys_getrandom(char __user *buf, size_t count, unsigned int flags);
 asmlinkage long sys_memfd_create(const char __user *uname_ptr, unsigned int flags);
-asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
+asmlinkage long sys_bpf(int cmd, union bpf_attr __user *attr, unsigned int size);
 asmlinkage long sys_execveat(int dfd, const char __user *filename, const char __user *const __user *argv, const char __user *const __user *envp, int flags);
 asmlinkage long sys_userfaultfd(int flags);
 asmlinkage long sys_membarrier(int cmd, unsigned int flags, int cpu_id);
@@ -32640,10 +33764,11 @@ asmlinkage long sys_memfd_secret(unsigned int flags);
 asmlinkage long sys_set_mempolicy_home_node(unsigned long start, unsigned long len, unsigned long home_node, unsigned long flags);
 asmlinkage long sys_cachestat(unsigned int fd, struct cachestat_range __user *cstat_range, struct cachestat __user *cstat, unsigned int flags);
 asmlinkage long sys_map_shadow_stack(unsigned long addr, unsigned long size, unsigned int flags);
-asmlinkage long sys_lsm_get_self_attr(unsigned int attr, struct lsm_ctx *ctx, u32 *size, u32 flags);
-asmlinkage long sys_lsm_set_self_attr(unsigned int attr, struct lsm_ctx *ctx, u32 size, u32 flags);
-asmlinkage long sys_lsm_list_modules(u64 *ids, u32 *size, u32 flags);
+asmlinkage long sys_lsm_get_self_attr(unsigned int attr, struct lsm_ctx __user *ctx, u32 __user *size, u32 flags);
+asmlinkage long sys_lsm_set_self_attr(unsigned int attr, struct lsm_ctx __user *ctx, u32 size, u32 flags);
+asmlinkage long sys_lsm_list_modules(u64 __user *ids, u32 __user *size, u32 flags);
 asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int on);
+asmlinkage long sys_uretprobe(void);
 asmlinkage long sys_pciconfig_read(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
 asmlinkage long sys_pciconfig_write(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
 asmlinkage long sys_pciconfig_iobase(long which, unsigned long bus, unsigned long devfn);
@@ -32751,8 +33876,8 @@ asmlinkage long sys_ni_posix_timers(void);
 syscall_defs_compat = """
 asmlinkage long compat_sys_io_setup(unsigned nr_reqs, u32 __user *ctx32p);
 asmlinkage long compat_sys_io_submit(compat_aio_context_t ctx_id, int nr, u32 __user *iocb);
-asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig);
-asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig);
+asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig); # codespell:ignore
+asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig); # codespell:ignore
 asmlinkage long compat_sys_epoll_pwait(int epfd, struct epoll_event __user *events, int maxevents, int timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
 asmlinkage long compat_sys_epoll_pwait2(int epfd, struct epoll_event __user *events, int maxevents, const struct __kernel_timespec __user *timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
 asmlinkage long compat_sys_fcntl(unsigned int fd, unsigned int cmd, compat_ulong_t arg);
@@ -32763,7 +33888,7 @@ asmlinkage long compat_sys_statfs64(const char __user *pathname, compat_size_t s
 asmlinkage long compat_sys_fstatfs(unsigned int fd, struct compat_statfs __user *buf);
 asmlinkage long compat_sys_fstatfs64(unsigned int fd, compat_size_t sz, struct compat_statfs64 __user *buf);
 asmlinkage long compat_sys_truncate(const char __user *, compat_off_t);
-asmlinkage long compat_sys_ftruncate(unsigned int, compat_ulong_t);
+asmlinkage long compat_sys_ftruncate(unsigned int, compat_off_t);
 asmlinkage long compat_sys_openat(int dfd, const char __user *filename, int flags, umode_t mode);
 asmlinkage long compat_sys_getdents(unsigned int fd, struct compat_linux_dirent __user *dirent, unsigned int count);
 asmlinkage long compat_sys_lseek(unsigned int, compat_off_t, unsigned int);
@@ -32823,7 +33948,7 @@ asmlinkage long compat_sys_rt_tgsigqueueinfo(compat_pid_t tgid, compat_pid_t pid
 asmlinkage long compat_sys_recvmmsg_time64(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags, struct __kernel_timespec __user *timeout);
 asmlinkage long compat_sys_recvmmsg_time32(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags, struct old_timespec32 __user *timeout);
 asmlinkage long compat_sys_wait4(compat_pid_t pid, compat_uint_t __user *stat_addr, int options, struct compat_rusage __user *ru);
-asmlinkage long compat_sys_fanotify_mark(int, unsigned int, __u32, __u32, int, const char __user *);
+!asmlinkage long compat_sys_fanotify_mark(int fanotify_fd, unsigned int flags, __u32 mask_1, __u32 mask_2, int dfd, const char __user *pathname);
 asmlinkage long compat_sys_open_by_handle_at(int mountdirfd, struct file_handle __user *handle, int flags);
 asmlinkage long compat_sys_sendmmsg(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags);
 asmlinkage long compat_sys_execveat(int dfd, const char __user *filename, const compat_uptr_t __user *argv, const compat_uptr_t __user *envp, int flags);
@@ -33204,6 +34329,7 @@ x64_syscall_tbl = """
 332     common  statx                   sys_statx
 333     common  io_pgetevents           sys_io_pgetevents
 334     common  rseq                    sys_rseq
+335     common  uretprobe               sys_uretprobe
 # don't use numbers 387 through 423, add new calls after the last
 # 'common' entry
 424     common  pidfd_send_signal       sys_pidfd_send_signal
@@ -33718,7 +34844,7 @@ x86_syscall_tbl = """
 412     i386    utimensat_time64        sys_utimensat
 413     i386    pselect6_time64         sys_pselect6                    compat_sys_pselect6_time64
 414     i386    ppoll_time64            sys_ppoll                       compat_sys_ppoll_time64
-416     i386    io_pgetevents_time64    sys_io_pgetevents
+416     i386    io_pgetevents_time64    sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     i386    recvmmsg_time64         sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     i386    mq_timedsend_time64     sys_mq_timedsend
 419     i386    mq_timedreceive_time64  sys_mq_timedreceive
@@ -34476,7 +35602,7 @@ arm_compat_syscall_tbl = """
 412  arm  utimensat_time64              sys_utimensat
 413  arm  pselect6_time64               compat_sys_pselect6_time64
 414  arm  ppoll_time64                  compat_sys_ppoll_time64
-416  arm  io_pgetevents_time64          sys_io_pgetevents
+416  arm  io_pgetevents_time64          compat_sys_io_pgetevents_time64
 417  arm  recvmmsg_time64               compat_sys_recvmmsg_time64
 418  arm  mq_timedsend_time64           sys_mq_timedsend
 419  arm  mq_timedreceive_time64        sys_mq_timedreceive
@@ -35038,7 +36164,7 @@ mips_o32_syscall_tbl = """
 17      o32     break                           sys_ni_syscall
 # 18 was sys_stat
 18      o32     unused18                        sys_ni_syscall
-19      o32     lseek                           sys_lseek
+19      o32     lseek                           sys_lseek                       compat_sys_lseek
 20      o32     getpid                          sys_getpid
 21      o32     mount                           sys_mount
 22      o32     umount                          sys_oldumount
@@ -35414,7 +36540,7 @@ mips_o32_syscall_tbl = """
 412     o32     utimensat_time64                sys_utimensat                   sys_utimensat
 413     o32     pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
 414     o32     ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
-416     o32     io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+416     o32     io_pgetevents_time64            sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     o32     recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     o32     mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
 419     o32     mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
@@ -35821,7 +36947,7 @@ mips_n32_syscall_tbl = """
 412     n32     utimensat_time64                sys_utimensat
 413     n32     pselect6_time64                 compat_sys_pselect6_time64
 414     n32     ppoll_time64                    compat_sys_ppoll_time64
-416     n32     io_pgetevents_time64            sys_io_pgetevents
+416     n32     io_pgetevents_time64            compat_sys_io_pgetevents_time64
 417     n32     recvmmsg_time64                 compat_sys_recvmmsg_time64
 418     n32     mq_timedsend_time64             sys_mq_timedsend
 419     n32     mq_timedreceive_time64          sys_mq_timedreceive
@@ -36487,8 +37613,10 @@ ppc_syscall_tbl = """
 178     nospu   rt_sigsuspend                   sys_rt_sigsuspend               compat_sys_rt_sigsuspend
 179     32      pread64                         sys_ppc_pread64                 compat_sys_ppc_pread64
 179     64      pread64                         sys_pread64
+179     spu     pread64                         sys_pread64
 180     32      pwrite64                        sys_ppc_pwrite64                compat_sys_ppc_pwrite64
 180     64      pwrite64                        sys_pwrite64
+180     spu     pwrite64                        sys_pwrite64
 181     common  chown                           sys_chown
 182     common  getcwd                          sys_getcwd
 183     common  capget                          sys_capget
@@ -36503,6 +37631,7 @@ ppc_syscall_tbl = """
 190     common  ugetrlimit                      sys_getrlimit                   compat_sys_getrlimit
 191     32      readahead                       sys_ppc_readahead               compat_sys_ppc_readahead
 191     64      readahead                       sys_readahead
+191     spu     readahead                       sys_readahead
 192     32      mmap2                           sys_mmap2                       compat_sys_mmap2
 193     32      truncate64                      sys_ppc_truncate64              compat_sys_ppc_truncate64
 194     32      ftruncate64                     sys_ppc_ftruncate64             compat_sys_ppc_ftruncate64
@@ -36550,6 +37679,7 @@ ppc_syscall_tbl = """
 232     nospu   set_tid_address                 sys_set_tid_address
 233     32      fadvise64                       sys_ppc32_fadvise64             compat_sys_ppc32_fadvise64
 233     64      fadvise64                       sys_fadvise64
+233     spu     fadvise64                       sys_fadvise64
 234     nospu   exit_group                      sys_exit_group
 235     nospu   lookup_dcookie                  sys_ni_syscall
 236     common  epoll_create                    sys_epoll_create
@@ -36759,7 +37889,7 @@ ppc_syscall_tbl = """
 412     32      utimensat_time64                sys_utimensat                   sys_utimensat
 413     32      pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
 414     32      ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
-416     32      io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+416     32      io_pgetevents_time64            sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     32      recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     32      mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
 419     32      mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
@@ -36929,7 +38059,7 @@ sparc_syscall_tbl = """
 90      common  dup2                    sys_dup2
 91      32      setfsuid32              sys_setfsuid
 92      common  fcntl                   sys_fcntl                       compat_sys_fcntl
-93      common  select                  sys_select
+93      common  select                  sys_select                      compat_sys_select
 94      32      setfsgid32              sys_setfsgid
 95      common  fsync                   sys_fsync
 96      common  setpriority             sys_setpriority
@@ -36967,7 +38097,7 @@ sparc_syscall_tbl = """
 123     32      fchown                  sys_fchown16
 123     64      fchown                  sys_fchown
 124     common  fchmod                  sys_fchmod
-125     common  recvfrom                sys_recvfrom
+125     common  recvfrom                sys_recvfrom                    compat_sys_recvfrom
 126     32      setreuid                sys_setreuid16
 126     64      setreuid                sys_setreuid
 127     32      setregid                sys_setregid16
@@ -37059,7 +38189,7 @@ sparc_syscall_tbl = """
 204     32      readdir                 sys_old_readdir                 compat_sys_old_readdir
 204     64      readdir                 sys_nis_syscall
 205     common  readahead               sys_readahead                   compat_sys_readahead
-206     common  socketcall              sys_socketcall                  sys32_socketcall
+206     common  socketcall              sys_socketcall                  compat_sys_socketcall
 207     common  syslog                  sys_syslog
 208     common  lookup_dcookie          sys_ni_syscall
 209     common  fadvise64               sys_fadvise64                   compat_sys_fadvise64
@@ -37273,7 +38403,7 @@ sparc_syscall_tbl = """
 412     32      utimensat_time64                sys_utimensat                   sys_utimensat
 413     32      pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
 414     32      ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
-416     32      io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+416     32      io_pgetevents_time64            sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     32      recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     32      mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
 419     32      mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
@@ -38396,7 +39526,7 @@ s390x_syscall_tbl = """
 412     32      utimensat_time64        -                               sys_utimensat
 413     32      pselect6_time64         -                               compat_sys_pselect6_time64
 414     32      ppoll_time64            -                               compat_sys_ppoll_time64
-416     32      io_pgetevents_time64    -                               sys_io_pgetevents
+416     32      io_pgetevents_time64    -                               compat_sys_io_pgetevents_time64
 417     32      recvmmsg_time64         -                               compat_sys_recvmmsg_time64
 418     32      mq_timedsend_time64     -                               sys_mq_timedsend
 419     32      mq_timedreceive_time64  -                               sys_mq_timedreceive
@@ -38770,7 +39900,7 @@ sh4_syscall_tbl = """
 311     common  set_robust_list                 sys_set_robust_list
 312     common  get_robust_list                 sys_get_robust_list
 313     common  splice                          sys_splice
-314     common  sync_file_range                 sys_sync_file_range
+314     common  sync_file_range                 sys_sh_sync_file_range6
 315     common  tee                             sys_tee
 316     common  vmsplice                        sys_vmsplice
 317     common  move_pages                      sys_move_pages
@@ -38844,6 +39974,7 @@ sh4_syscall_tbl = """
 385     common  pkey_alloc                      sys_pkey_alloc
 386     common  pkey_free                       sys_pkey_free
 387     common  rseq                            sys_rseq
+388     common  sync_file_range2                sys_sync_file_range2
 # room for arch specific syscalls
 393     common  semget                          sys_semget
 394     common  semctl                          sys_semctl
@@ -40004,7 +41135,7 @@ hppa_syscall_tbl = """
 95      common  fchown                  sys_fchown
 96      common  getpriority             sys_getpriority
 97      common  setpriority             sys_setpriority
-98      common  recv                    sys_recv
+98      common  recv                    sys_recv                        compat_sys_recv
 99      common  statfs                  sys_statfs                      compat_sys_statfs
 100     common  fstatfs                 sys_fstatfs                     compat_sys_fstatfs
 101     common  stat64                  sys_stat64
@@ -40031,7 +41162,7 @@ hppa_syscall_tbl = """
 120     common  clone                   sys_clone_wrapper
 121     common  setdomainname           sys_setdomainname
 122     common  sendfile                sys_sendfile                    compat_sys_sendfile
-123     common  recvfrom                sys_recvfrom
+123     common  recvfrom                sys_recvfrom                    compat_sys_recvfrom
 124     32      adjtimex                sys_adjtimex_time32
 124     64      adjtimex                sys_adjtimex
 125     common  mprotect                sys_mprotect
@@ -40260,7 +41391,7 @@ hppa_syscall_tbl = """
 320     common  accept4                 sys_accept4
 321     common  prlimit64               sys_prlimit64
 322     common  fanotify_init           sys_fanotify_init
-323     common  fanotify_mark           sys_fanotify_mark               sys32_fanotify_mark
+323     common  fanotify_mark           sys_fanotify_mark               compat_sys_fanotify_mark
 324     32      clock_adjtime           sys_clock_adjtime32
 324     64      clock_adjtime           sys_clock_adjtime
 325     common  name_to_handle_at       sys_name_to_handle_at
@@ -43046,7 +44177,7 @@ csky_syscall_tbl = """
 81   csky  sync                     sys_sync
 82   csky  fsync                    sys_fsync
 83   csky  fdatasync                sys_fdatasync
-84   csky  sync_file_range          sys_sync_file_range
+84   csky  sync_file_range          sys_sync_file_range2
 85   csky  timerfd_create           sys_timerfd_create
 86   csky  timerfd_settime          sys_timerfd_settime
 87   csky  timerfd_gettime          sys_timerfd_gettime
@@ -43507,6 +44638,8 @@ x86_16_dos_syscall_list = [
 
 
 class Syscall:
+    """A collection of utility functions that are related to syscall tables."""
+
     @staticmethod
     def parse_common_syscall_defs():
         sc_defs = [
@@ -43577,6 +44710,10 @@ class Syscall:
                     "unsigned long flags", "unsigned long fd", "unsigned long off",
                 ], # arch/x86/kernel/sys_x86_64.c
                 "sys_rt_sigreturn": [], # arch/x86/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # include/linux/syscalls.h
             }
 
             syscall_list = []
@@ -43760,6 +44897,10 @@ class Syscall:
                 "sys_arch_prctl": [
                     "int option", "unsigned long arg2",
                 ], # arch/x86/kernel/process_32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "unsigned int mask_1",
+                    "unsigned int mask_2", "int dfd", "const char  __user *pathname",
+                ], # include/linux/syscalls.h
             }
 
             syscall_list = []
@@ -43806,6 +44947,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "unsigned long off",
                 ], # arch/arm64/kernel/sys.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # include/linux/syscalls.h
             }
 
             syscall_list = []
@@ -43933,7 +45078,11 @@ class Syscall:
                 ], # arch/arm/kernel/entry-common.S
                 "sys_arm_fadvise64_64": [
                     "int fd", "int advice", "loff_t offset", "loff_t len",
-                ] # arch/arm/kernel/sys_arm.c
+                ], # arch/arm/kernel/sys_arm.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44020,6 +45169,10 @@ class Syscall:
                 "sys_sigaction": [
                     "int sig2", "const struct sigaction __user *act", "struct sigaction __user *oact",
                 ], # arch/mips/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44084,6 +45237,10 @@ class Syscall:
                     "unsigned long personality",
                 ], # arch/mips/kernel/linux32.c
                 "sysn32_rt_sigreturn": [], # arch/mips/kernel/signal_n32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44136,6 +45293,10 @@ class Syscall:
                 "__sys_clone3": [
                     "struct clone_args __user *uargs", "size_t size",
                 ], #
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44218,6 +45379,10 @@ class Syscall:
                 "sys_ppc_fallocate": [
                     "int fd", "int mode", "u32 offset1", "u32 offset2", "u32 len1", "u32 len2",
                 ], # arch/powerpc/kernel/sys_ppc32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "unsigned int mask_1",
+                    "unsigned int mask_2", "int dfd", "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44269,6 +45434,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "u32 __user *map",
                 ], # arch/powerpc/mm/book3s64/subpage_prot.c
                 "sys_switch_endian": [], # arch/powerpc/kernel/syscalls.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44328,6 +45497,10 @@ class Syscall:
                     "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
                     "int __user *child_tidptr", "unsigned long tls",
                 ], # kernel/fork.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44411,6 +45584,10 @@ class Syscall:
                 "sys_rt_sigreturn": [
                     "struct pt_regs *regs",
                 ], # arch/sparc/kernel/signal_64.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44445,6 +45622,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t offset",
                 ], # arch/riscv/kernel/sys_riscv.c"
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44486,6 +45667,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t offset",
                 ], # arch/riscv/kernel/sys_riscv.c"
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44547,6 +45732,10 @@ class Syscall:
                     "unsigned long function_code", "void __user *buffer", "u64 __user *return_code",
                     "unsigned long flags",
                 ], # arch/s390/kernel/sthyi.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44599,6 +45788,13 @@ class Syscall:
                 "sys_fadvise64_64_wrapper": [
                     "int fd", "u32 offset0", "u32 offset1", "u32 len0", "u32 len1", "int advice",
                 ], # arch/sh/kernel/sys_sh32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
+                "sys_sh_sync_file_range6": [
+                    "int fd", "u64 offset", "u64 nbytes", "unsigned int flags",
+                ], # sh/kernel/sys_sh32.c
             }
 
             syscall_list = []
@@ -44652,6 +45848,10 @@ class Syscall:
                 "__sys_clone3": [
                     "struct clone_args __user *uargs", "size_t size",
                 ], #
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44789,12 +45989,19 @@ class Syscall:
                 "alpha_clone": [
                     "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
                     "int __user *child_tidptr", "unsigned long tls",
-                ], # kernel/fork.c
+                ], # arch/alpha/kernel/entry.S (fork_like macro)
+                "alpha_clone3": [
+                    "struct clone_args __user *uargs", "size_t size",
+                ], # arch/alpha/kernel/entry.S (fork_like macro)
                 "sys_rt_sigreturn": [], # arch/alpha/kernel/entry.S (sigreturn_like macro)
                 "sys_rt_sigaction": [
                     "int sig", "const struct sigaction __user *act", "struct sigaction __user *oact",
                     "size_t sigsetsize", "void __user *restorer",
-                ] # arch/alpha/kernel/signal.c
+                ], # arch/alpha/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44893,6 +46100,10 @@ class Syscall:
                 "sys_cacheflush": [
                     "unsigned long addr", "unsigned long bytes", "unsigned int cache",
                 ], # arch/parisc/kernel/cache.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "unsigned int mask_1",
+                    "unsigned int mask_2", "int dfd", "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44960,6 +46171,11 @@ class Syscall:
                 "sys_cacheflush": [
                     "unsigned long addr", "unsigned long bytes", "unsigned int cache",
                 ], # arch/parisc/kernel/cache.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
+
             }
             syscall_list = []
             for entry in tbl:
@@ -44993,6 +46209,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # include/asm-generic/syscalls.h
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45027,6 +46247,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # include/asm-generic/syscalls.h
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45065,6 +46289,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
                 ], # arch/microblaze/kernel/sys_microblaze.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45101,6 +46329,10 @@ class Syscall:
                     "unsigned long tls", "int *child_tidptr",
                 ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
                 "xtensa_rt_sigreturn": [], # arch/xtensa/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45142,6 +46374,13 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
                 ], # arch/cris/kernel/sys_cris.c
+                "sys_lookup_dcookie": [
+                    "u64 cookie64", "char __user *buf", "size_t, len",
+                ], # fs/dcookies.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45176,6 +46415,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # arch/loongarch/kernel/syscall.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45220,6 +46463,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # include/uapi/asm/unistd.h (sys_mmap_pgoff)
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45274,6 +46521,10 @@ class Syscall:
                 "sys_fadvise64_64": [
                     "int fd", "int advice", "loff_t offset", "loff_t len",
                 ], # arch/csky/include/asm/syscalls.h
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45373,6 +46624,7 @@ def get_syscall_table(arch=None, mode=None):
 @register_command
 class SyscallArgsCommand(GenericCommand):
     """Get the syscall name and arguments based on the register values in the current state."""
+
     _cmdline_ = "syscall-args"
     _category_ = "01-a. Debugging Support - Context"
 
@@ -45490,6 +46742,7 @@ class SyscallArgsCommand(GenericCommand):
 @register_command
 class SyscallSampleCommand(GenericCommand):
     """Show the syscall calling sample for specified architecture."""
+
     _cmdline_ = "syscall-sample"
     _category_ = "05-c. Syscall - Show Example"
 
@@ -45538,6 +46791,7 @@ class SyscallSampleCommand(GenericCommand):
 @register_command
 class CodebaseCommand(GenericCommand):
     """Display various base addresses."""
+
     _cmdline_ = "codebase"
     _category_ = "02-b. Process Information - Base Address"
     _aliases_ = ["base"]
@@ -45605,6 +46859,7 @@ class CodebaseCommand(GenericCommand):
 @register_command
 class HeapbaseCommand(GenericCommand):
     """Display heap base address."""
+
     _cmdline_ = "heapbase"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -45685,6 +46940,7 @@ class HeapbaseCommand(GenericCommand):
 @register_command
 class LibcCommand(GenericCommand):
     """Display libc base address."""
+
     _cmdline_ = "libc"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -45763,6 +47019,7 @@ class LibcCommand(GenericCommand):
 @register_command
 class LdCommand(GenericCommand):
     """Display ld base address."""
+
     _cmdline_ = "ld"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -45836,6 +47093,7 @@ class LdCommand(GenericCommand):
 @register_command
 class MagicCommand(GenericCommand):
     """Display useful userland addresses and offsets."""
+
     _cmdline_ = "magic"
     _category_ = "02-g. Process Information - Symbol"
 
@@ -45860,21 +47118,23 @@ class MagicCommand(GenericCommand):
         width = AddressUtil.get_format_address_width()
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
-            addr = ProcessMap.lookup_address(addr)
-            perm = addr.section.permission
-            if is_ascii_string(addr.value):
-                val = read_cstring_from_memory(addr.value, ascii_only=True)
-                gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}".format(
-                    sym, addr, perm, addr.value - base, RIGHT_ARROW, val,
-                ))
-            else:
-                val = ProcessMap.lookup_address(read_int_from_memory(addr.value))
-                val_sym = Symbol.get_symbol_string(val.value)
-                gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}{:s}".format(
-                    sym, addr, perm, addr.value - base, RIGHT_ARROW, val.long_fmt(), val_sym,
-                ))
-        except Exception:
+        except gdb.error:
             gef_print("{:45s} {:>{:d}s}".format(sym, "Not found", width))
+            return
+
+        addr = ProcessMap.lookup_address(addr)
+        perm = addr.section.permission
+        if is_ascii_string(addr.value):
+            val = read_cstring_from_memory(addr.value)
+            gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}".format(
+                sym, addr, perm, addr.value - base, RIGHT_ARROW, val,
+            ))
+        else:
+            val = ProcessMap.lookup_address(read_int_from_memory(addr.value))
+            val_sym = Symbol.get_symbol_string(val.value)
+            gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}{:s}".format(
+                sym, addr, perm, addr.value - base, RIGHT_ARROW, val.long_fmt(), val_sym,
+            ))
         return
 
     def resolve_and_print_fj(self, sym, base):
@@ -46035,6 +47295,7 @@ class MagicCommand(GenericCommand):
 @register_command
 class KernelMagicCommand(GenericCommand):
     """Display useful kernel addresses and offsets."""
+
     _cmdline_ = "kmagic"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -46097,7 +47358,7 @@ class KernelMagicCommand(GenericCommand):
                 sym, addr, width, perm, RIGHT_ARROW, val, width,
             ))
         elif to_string:
-            val = read_cstring_from_memory(addr, ascii_only=True) or "???"
+            val = read_cstring_from_memory(addr) or "???"
             gef_print("{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}){:s}{:s}".format(
                 sym, addr, width, perm, addr - base, RIGHT_ARROW, val,
             ))
@@ -46247,6 +47508,7 @@ class KernelMagicCommand(GenericCommand):
 @register_command
 class OneGadgetCommand(GenericCommand):
     """Invoke `one_gadget`."""
+
     _cmdline_ = "onegadget"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -46265,8 +47527,8 @@ class OneGadgetCommand(GenericCommand):
 
         try:
             one_gadget = GefUtil.which("one_gadget")
-            gef_print(titlify(f"{one_gadget} '{libc.path}' -l 1"))
-            os.system(f"{one_gadget} '{libc.path}' -l 1")
+            gef_print(titlify("{!r} {!r} -l 1".format(one_gadget, libc.path)))
+            os.system("{!r} {!r} -l 1".format(one_gadget, libc.path))
         except Exception:
             err("Missing `one_gadget`, install with: `gem install one_gadget`.")
         return
@@ -46275,6 +47537,7 @@ class OneGadgetCommand(GenericCommand):
 @register_command
 class SeccompCommand(GenericCommand):
     """Invoke `seccomp-tools`."""
+
     _cmdline_ = "seccomp"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -46289,8 +47552,8 @@ class SeccompCommand(GenericCommand):
         path = Path.get_filepath()
         try:
             seccomp = GefUtil.which("seccomp-tools")
-            gef_print(titlify(f"{seccomp} dump '{path}'"))
-            os.system(f"{seccomp} dump '{path}'")
+            gef_print(titlify("{!r} dump {!r}".format(seccomp, path)))
+            os.system("{!r} dump {!r}".format(seccomp, path))
         except Exception:
             err("Missing `seccomp-tools`, install with: `gem install seccomp-tools`.")
         return
@@ -46298,7 +47561,8 @@ class SeccompCommand(GenericCommand):
 
 @register_command
 class SysregCommand(GenericCommand):
-    """Pretty-print system registers (not general parpose) from `info register`."""
+    """Pretty-print system registers (not general purpose) from `info register`."""
+
     _cmdline_ = "sysreg"
     _category_ = "04-a. Register - View"
 
@@ -46308,11 +47572,14 @@ class SysregCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def get_non_generic_regs(self):
-        res = gdb.execute("info registers", to_string=True)
+        if is_riscv64() or is_riscv32():
+            res = gdb.execute("info registers system", to_string=True)
+        else:
+            res = gdb.execute("info registers", to_string=True)
         res = res.strip()
         regs = {}
         for line in res.splitlines():
-            m = re.match(r"(\S+)\s*(0x\S+)\s+(0x\S+|\[.+\])", line)
+            m = re.match(r"^(\S+)\s*(0x\S+)", line)
             if not m:
                 continue
             regname, regvalue = m.group(1), m.group(2)
@@ -46341,10 +47608,7 @@ class SysregCommand(GenericCommand):
             out = []
             for j in range(COLUMN):
                 if len(regs) > i + j * length_of_each_bank:
-                    if is_32bit():
-                        msg = "{:16s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
-                    else:
-                        msg = "{:25s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
+                    msg = "{:25s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
                     if regs[i + j * length_of_each_bank][1] > 0:
                         msg = Color.boldify(msg)
                     out.append(msg)
@@ -46366,6 +47630,7 @@ class SysregCommand(GenericCommand):
 @register_command
 class MmxSetCommand(GenericCommand):
     """Simply set the value to mm register."""
+
     _cmdline_ = "mmxset"
     _category_ = "04-b. Register - Modify"
 
@@ -46425,6 +47690,7 @@ class MmxSetCommand(GenericCommand):
 @register_command
 class MmxCommand(GenericCommand):
     """Display MMX registers."""
+
     _cmdline_ = "mmx"
     _category_ = "04-a. Register - View"
 
@@ -46472,6 +47738,7 @@ class MmxCommand(GenericCommand):
 @register_command
 class XmmSetCommand(GenericCommand):
     """Simply set the value to xmm or ymm register."""
+
     _cmdline_ = "xmmset"
     _category_ = "04-b. Register - Modify"
 
@@ -46518,6 +47785,7 @@ class XmmSetCommand(GenericCommand):
 @register_command
 class SseCommand(GenericCommand):
     """Display SSE registers."""
+
     _cmdline_ = "sse"
     _category_ = "04-a. Register - View"
     _aliases_ = ["xmm"]
@@ -46567,7 +47835,7 @@ class SseCommand(GenericCommand):
             [7, "IM", "Invalid Operation Exception Mask"],
             [6, "DAZ", "Use as 0.0 if input data is denormalized"],
             [5, "PE", "Precision Exception"],
-            [4, "UE", "Underflow Exception"],
+            [4, "UE", "Underflow Exception"], # codespell:ignore
             [3, "OE", "Overflow Exception"],
             [2, "ZE", "Zero Divide Exception"],
             [1, "DE", "Denormalized Operand Exception"],
@@ -46596,6 +47864,7 @@ class SseCommand(GenericCommand):
 @register_command
 class AvxCommand(GenericCommand):
     """Display AVX registers."""
+
     _cmdline_ = "avx"
     _category_ = "04-a. Register - View"
     _aliases_ = ["ymm"]
@@ -46644,6 +47913,7 @@ class AvxCommand(GenericCommand):
 @register_command
 class FpuCommand(GenericCommand):
     """Display fpu registers (x86/x64:x87-fpu, ARM/ARM64:vfp-d16)."""
+
     _cmdline_ = "fpu"
     _category_ = "04-a. Register - View"
 
@@ -46678,18 +47948,6 @@ class FpuCommand(GenericCommand):
         ptr = ctypes.cast(ctypes.addressof(value), BYTES)
         x = ["{:02x}".format(int(x) & 0xff) for x in ptr[0][::-1]]
         return int("".join(x), 16)
-
-    def bits_split(self, x, bits=32):
-        # 0xaaaabbbb -> 0xaaaa_bbbb
-        out = ""
-        for i in range(bits):
-            if x & (1 << i):
-                out = "1" + out
-            else:
-                out = "0" + out
-            if i % 4 == 3:
-                out = "_" + out
-        return "0b" + out[1:]
 
     def print_fpu_arm(self):
         red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
@@ -46928,7 +48186,7 @@ class FpuCommand(GenericCommand):
             [7, "ES", "Exception Summary Status"],
             [6, "SF", "Stack Fault"],
             [5, "PE", "Precision Exception"],
-            [4, "UE", "Underflow Exception"],
+            [4, "UE", "Underflow Exception"], # codespell:ignore
             [3, "OE", "Overflow Exception"],
             [2, "ZE", "Zero Divide Exception"],
             [1, "DE", "Denormalized Operand Exception"],
@@ -46995,159 +48253,609 @@ class FpuCommand(GenericCommand):
 
 
 @register_command
-class ErrnoCommand(GenericCommand):
+class ErrnoCommand(GenericCommand, BufferingOutput):
     """Convert errno (or argument) to its string representation."""
+
     _cmdline_ = "errno"
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("errno", metavar="ERRNO", nargs="?", type=lambda x: int(x, 0),
                         help="show specific errno definitions.")
-    parser.add_argument("--all", action="store_true", help="show all errno definitions.")
+    parser.add_argument("-a", "--all", action="store_true", help="show all errno definitions.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    # /usr/include/asm-generic/errno.h
-    ERRNO_DICT = {
-        0   : ["-",               "No error"],
-        1   : ["EPERM",           "Operation not permitted"],
-        2   : ["ENOENT",          "No such file or directory"],
-        3   : ["ESRCH",           "No such process"],
-        4   : ["EINTR",           "Interrupted system call"],
-        5   : ["EIO",             "I/O error"],
-        6   : ["ENXIO",           "No such device or address"],
-        7   : ["E2BIG",           "Argument list too long"],
-        8   : ["ENOEXEC",         "Exec format error"],
-        9   : ["EBADF",           "Bad file number"],
-        10  : ["ECHILD",          "No child processes"],
-        11  : ["EAGAIN",          "Try again"],
-        12  : ["ENOMEM",          "Out of memory"],
-        13  : ["EACCES",          "Permission denied"],
-        14  : ["EFAULT",          "Bad address"],
-        15  : ["ENOTBLK",         "Block device required"],
-        16  : ["EBUSY",           "Device or resource busy"],
-        17  : ["EEXIST",          "File exists"],
-        18  : ["EXDEV",           "Cross-device link"],
-        19  : ["ENODEV",          "No such device"],
-        20  : ["ENOTDIR",         "Not a directory"],
-        21  : ["EISDIR",          "Is a directory"],
-        22  : ["EINVAL",          "Invalid argument"],
-        23  : ["ENFILE",          "File table overflow"],
-        24  : ["EMFILE",          "Too many open files"],
-        25  : ["ENOTTY",          "Not a typewriter"],
-        26  : ["ETXTBSY",         "Text file busy"],
-        27  : ["EFBIG",           "File too large"],
-        28  : ["ENOSPC",          "No space left on device"],
-        29  : ["ESPIPE",          "Illegal seek"],
-        30  : ["EROFS",           "Read-only file system"],
-        31  : ["EMLINK",          "Too many links"],
-        32  : ["EPIPE",           "Broken pipe"],
-        33  : ["EDOM",            "Math argument out of domain of func"],
-        34  : ["ERANGE",          "Math result not representable"],
-        35  : ["EDEADLK",         "Resource deadlock would occur"],
-        36  : ["ENAMETOOLONG",    "File name too long"],
-        37  : ["ENOLCK",          "No record locks available"],
-        38  : ["ENOSYS",          "Invalid system call number"],
-        39  : ["ENOTEMPTY",       "Directory not empty"],
-        40  : ["ELOOP",           "Too many symbolic links encountered"],
-        42  : ["ENOMSG",          "No message of desired type"],
-        43  : ["EIDRM",           "Identifier removed"],
-        44  : ["ECHRNG",          "Channel number out of range"],
-        45  : ["EL2NSYNC",        "Level 2 not synchronized"],
-        46  : ["EL3HLT",          "Level 3 halted"],
-        47  : ["EL3RST",          "Level 3 reset"],
-        48  : ["ELNRNG",          "Link number out of range"],
-        49  : ["EUNATCH",         "Protocol driver not attached"],
-        50  : ["ENOCSI",          "No CSI structure available"],
-        51  : ["EL2HLT",          "Level 2 halted"],
-        52  : ["EBADE",           "Invalid exchange"],
-        53  : ["EBADR",           "Invalid request descriptor"],
-        54  : ["EXFULL",          "Exchange full"],
-        55  : ["ENOANO",          "No anode"],
-        56  : ["EBADRQC",         "Invalid request code"],
-        57  : ["EBADSLT",         "Invalid slot"],
-        59  : ["EBFONT",          "Bad font file format"],
-        60  : ["ENOSTR",          "Device not a stream"],
-        61  : ["ENODATA",         "No data available"],
-        62  : ["ETIME",           "Timer expired"],
-        63  : ["ENOSR",           "Out of streams resources"],
-        64  : ["ENONET",          "Machine is not on the network"],
-        65  : ["ENOPKG",          "Package not installed"],
-        66  : ["EREMOTE",         "Object is remote"],
-        67  : ["ENOLINK",         "Link has been severed"],
-        68  : ["EADV",            "Advertise error"],
-        69  : ["ESRMNT",          "Srmount error"],
-        70  : ["ECOMM",           "Communication error on send"],
-        71  : ["EPROTO",          "Protocol error"],
-        72  : ["EMULTIHOP",       "Multihop attempted"],
-        73  : ["EDOTDOT",         "RFS specific error"],
-        74  : ["EBADMSG",         "Not a data message"],
-        75  : ["EOVERFLOW",       "Value too large for defined data type"],
-        76  : ["ENOTUNIQ",        "Name not unique on network"],
-        77  : ["EBADFD",          "File descriptor in bad state"],
-        78  : ["EREMCHG",         "Remote address changed"],
-        79  : ["ELIBACC",         "Can not access a needed shared library"],
-        80  : ["ELIBBAD",         "Accessing a corrupted shared library"],
-        81  : ["ELIBSCN",         ".lib section in a.out corrupted"],
-        82  : ["ELIBMAX",         "Attempting to link in too many shared libraries"],
-        83  : ["ELIBEXEC",        "Cannot exec a shared library directly"],
-        84  : ["EILSEQ",          "Illegal byte sequence"],
-        85  : ["ERESTART",        "Interrupted system call should be restarted"],
-        86  : ["ESTRPIPE",        "Streams pipe error"],
-        87  : ["EUSERS",          "Too many users"],
-        88  : ["ENOTSOCK",        "Socket operation on non-socket"],
-        89  : ["EDESTADDRREQ",    "Destination address required"],
-        90  : ["EMSGSIZE",        "Message too long"],
-        91  : ["EPROTOTYPE",      "Protocol wrong type for socket"],
-        92  : ["ENOPROTOOPT",     "Protocol not available"],
-        93  : ["EPROTONOSUPPORT", "Protocol not supported"],
-        94  : ["ESOCKTNOSUPPORT", "Socket type not supported"],
-        95  : ["EOPNOTSUPP",      "Operation not supported on transport endpoint"],
-        96  : ["EPFNOSUPPORT",    "Protocol family not supported"],
-        97  : ["EAFNOSUPPORT",    "Address family not supported by protocol"],
-        98  : ["EADDRINUSE",      "Address already in use"],
-        99  : ["EADDRNOTAVAIL",   "Cannot assign requested address"],
-        100 : ["ENETDOWN",        "Network is down"],
-        101 : ["ENETUNREACH",     "Network is unreachable"],
-        102 : ["ENETRESET",       "Network dropped connection because of reset"],
-        103 : ["ECONNABORTED",    "Software caused connection abort"],
-        104 : ["ECONNRESET",      "Connection reset by peer"],
-        105 : ["ENOBUFS",         "No buffer space available"],
-        106 : ["EISCONN",         "Transport endpoint is already connected"],
-        107 : ["ENOTCONN",        "Transport endpoint is not connected"],
-        108 : ["ESHUTDOWN",       "Cannot send after transport endpoint shutdown"],
-        109 : ["ETOOMANYREFS",    "Too many references: cannot splice"],
-        110 : ["ETIMEDOUT",       "Connection timed out"],
-        111 : ["ECONNREFUSED",    "Connection refused"],
-        112 : ["EHOSTDOWN",       "Host is down"],
-        113 : ["EHOSTUNREACH",    "No route to host"],
-        114 : ["EALREADY",        "Operation already in progress"],
-        115 : ["EINPROGRESS",     "Operation now in progress"],
-        116 : ["ESTALE",          "Stale file handle"],
-        117 : ["EUCLEAN",         "Structure needs cleaning"],
-        118 : ["ENOTNAM",         "Not a XENIX named type file"],
-        119 : ["ENAVAIL",         "No XENIX semaphores available"],
-        120 : ["EISNAM",          "Is a named type file"],
-        121 : ["EREMOTEIO",       "Remote I/O error"],
-        122 : ["EDQUOT",          "Quota exceeded"],
-        123 : ["ENOMEDIUM",       "No medium found"],
-        124 : ["EMEDIUMTYPE",     "Wrong medium type"],
-        125 : ["ECANCELED",       "Operation Canceled"],
-        126 : ["ENOKEY",          "Required key not available"],
-        127 : ["EKEYEXPIRED",     "Key has expired"],
-        128 : ["EKEYREVOKED",     "Key has been revoked"],
-        129 : ["EKEYREJECTED",    "Key was rejected by service"],
-        130 : ["EOWNERDEAD",      "Owner died"],
-        131 : ["ENOTRECOVERABLE", "State not recoverable"],
-        132 : ["ERFKILL",         "Operation not possible due to RF-kill"],
-        133 : ["EHWPOISON",       "Memory page has hardware error"],
-    }
+    @staticmethod
+    def get_errno_dict():
+        ERRNO_BASE_DICT = {
+            0   : ["-",               "No error"],
+            # include/uapi/asm-generic/errno-base.h
+            1   : ["EPERM",           "Operation not permitted"],
+            2   : ["ENOENT",          "No such file or directory"],
+            3   : ["ESRCH",           "No such process"],
+            4   : ["EINTR",           "Interrupted system call"],
+            5   : ["EIO",             "I/O error"],
+            6   : ["ENXIO",           "No such device or address"],
+            7   : ["E2BIG",           "Argument list too long"],
+            8   : ["ENOEXEC",         "Exec format error"],
+            9   : ["EBADF",           "Bad file number"],
+            10  : ["ECHILD",          "No child processes"],
+            11  : ["EAGAIN",          "Try again"],
+            12  : ["ENOMEM",          "Out of memory"],
+            13  : ["EACCES",          "Permission denied"],
+            14  : ["EFAULT",          "Bad address"],
+            15  : ["ENOTBLK",         "Block device required"],
+            16  : ["EBUSY",           "Device or resource busy"],
+            17  : ["EEXIST",          "File exists"],
+            18  : ["EXDEV",           "Cross-device link"],
+            19  : ["ENODEV",          "No such device"],
+            20  : ["ENOTDIR",         "Not a directory"],
+            21  : ["EISDIR",          "Is a directory"],
+            22  : ["EINVAL",          "Invalid argument"],
+            23  : ["ENFILE",          "File table overflow"],
+            24  : ["EMFILE",          "Too many open files"],
+            25  : ["ENOTTY",          "Not a typewriter"],
+            26  : ["ETXTBSY",         "Text file busy"],
+            27  : ["EFBIG",           "File too large"],
+            28  : ["ENOSPC",          "No space left on device"],
+            29  : ["ESPIPE",          "Illegal seek"],
+            30  : ["EROFS",           "Read-only file system"],
+            31  : ["EMLINK",          "Too many links"],
+            32  : ["EPIPE",           "Broken pipe"],
+            33  : ["EDOM",            "Math argument out of domain of func"],
+            34  : ["ERANGE",          "Math result not representable"],
+        }
+
+        ERRNO_DICT = {
+            # include/uapi/asm-generic/errno.h
+            35  : ["EDEADLK",         "Resource deadlock would occur"],
+            36  : ["ENAMETOOLONG",    "File name too long"],
+            37  : ["ENOLCK",          "No record locks available"],
+            38  : ["ENOSYS",          "Invalid system call number"],
+            39  : ["ENOTEMPTY",       "Directory not empty"],
+            40  : ["ELOOP",           "Too many symbolic links encountered"],
+            # 41
+            42  : ["ENOMSG",          "No message of desired type"],
+            43  : ["EIDRM",           "Identifier removed"],
+            44  : ["ECHRNG",          "Channel number out of range"],
+            45  : ["EL2NSYNC",        "Level 2 not synchronized"],
+            46  : ["EL3HLT",          "Level 3 halted"],
+            47  : ["EL3RST",          "Level 3 reset"],
+            48  : ["ELNRNG",          "Link number out of range"],
+            49  : ["EUNATCH",         "Protocol driver not attached"],
+            50  : ["ENOCSI",          "No CSI structure available"],
+            51  : ["EL2HLT",          "Level 2 halted"],
+            52  : ["EBADE",           "Invalid exchange"],
+            53  : ["EBADR",           "Invalid request descriptor"],
+            54  : ["EXFULL",          "Exchange full"],
+            55  : ["ENOANO",          "No anode"],
+            56  : ["EBADRQC",         "Invalid request code"],
+            57  : ["EBADSLT",         "Invalid slot"],
+            # 58
+            59  : ["EBFONT",          "Bad font file format"],
+            60  : ["ENOSTR",          "Device not a stream"],
+            61  : ["ENODATA",         "No data available"],
+            62  : ["ETIME",           "Timer expired"],
+            63  : ["ENOSR",           "Out of streams resources"],
+            64  : ["ENONET",          "Machine is not on the network"],
+            65  : ["ENOPKG",          "Package not installed"],
+            66  : ["EREMOTE",         "Object is remote"],
+            67  : ["ENOLINK",         "Link has been severed"],
+            68  : ["EADV",            "Advertise error"],
+            69  : ["ESRMNT",          "Srmount error"],
+            70  : ["ECOMM",           "Communication error on send"],
+            71  : ["EPROTO",          "Protocol error"],
+            72  : ["EMULTIHOP",       "Multihop attempted"],
+            73  : ["EDOTDOT",         "RFS specific error"],
+            74  : ["EBADMSG",         "Not a data message"],
+            75  : ["EOVERFLOW",       "Value too large for defined data type"],
+            76  : ["ENOTUNIQ",        "Name not unique on network"],
+            77  : ["EBADFD",          "File descriptor in bad state"],
+            78  : ["EREMCHG",         "Remote address changed"],
+            79  : ["ELIBACC",         "Can not access a needed shared library"],
+            80  : ["ELIBBAD",         "Accessing a corrupted shared library"],
+            81  : ["ELIBSCN",         ".lib section in a.out corrupted"],
+            82  : ["ELIBMAX",         "Attempting to link in too many shared libraries"],
+            83  : ["ELIBEXEC",        "Cannot exec a shared library directly"],
+            84  : ["EILSEQ",          "Illegal byte sequence"],
+            85  : ["ERESTART",        "Interrupted system call should be restarted"],
+            86  : ["ESTRPIPE",        "Streams pipe error"],
+            87  : ["EUSERS",          "Too many users"],
+            88  : ["ENOTSOCK",        "Socket operation on non-socket"],
+            89  : ["EDESTADDRREQ",    "Destination address required"],
+            90  : ["EMSGSIZE",        "Message too long"],
+            91  : ["EPROTOTYPE",      "Protocol wrong type for socket"],
+            92  : ["ENOPROTOOPT",     "Protocol not available"],
+            93  : ["EPROTONOSUPPORT", "Protocol not supported"],
+            94  : ["ESOCKTNOSUPPORT", "Socket type not supported"],
+            95  : ["EOPNOTSUPP",      "Operation not supported on transport endpoint"],
+            96  : ["EPFNOSUPPORT",    "Protocol family not supported"],
+            97  : ["EAFNOSUPPORT",    "Address family not supported by protocol"],
+            98  : ["EADDRINUSE",      "Address already in use"],
+            99  : ["EADDRNOTAVAIL",   "Cannot assign requested address"],
+            100 : ["ENETDOWN",        "Network is down"],
+            101 : ["ENETUNREACH",     "Network is unreachable"],
+            102 : ["ENETRESET",       "Network dropped connection because of reset"],
+            103 : ["ECONNABORTED",    "Software caused connection abort"],
+            104 : ["ECONNRESET",      "Connection reset by peer"],
+            105 : ["ENOBUFS",         "No buffer space available"],
+            106 : ["EISCONN",         "Transport endpoint is already connected"],
+            107 : ["ENOTCONN",        "Transport endpoint is not connected"],
+            108 : ["ESHUTDOWN",       "Cannot send after transport endpoint shutdown"],
+            109 : ["ETOOMANYREFS",    "Too many references: cannot splice"],
+            110 : ["ETIMEDOUT",       "Connection timed out"],
+            111 : ["ECONNREFUSED",    "Connection refused"],
+            112 : ["EHOSTDOWN",       "Host is down"],
+            113 : ["EHOSTUNREACH",    "No route to host"],
+            114 : ["EALREADY",        "Operation already in progress"],
+            115 : ["EINPROGRESS",     "Operation now in progress"],
+            116 : ["ESTALE",          "Stale file handle"],
+            117 : ["EUCLEAN",         "Structure needs cleaning"],
+            118 : ["ENOTNAM",         "Not a XENIX named type file"],
+            119 : ["ENAVAIL",         "No XENIX semaphores available"],
+            120 : ["EISNAM",          "Is a named type file"],
+            121 : ["EREMOTEIO",       "Remote I/O error"],
+            122 : ["EDQUOT",          "Quota exceeded"],
+            123 : ["ENOMEDIUM",       "No medium found"],
+            124 : ["EMEDIUMTYPE",     "Wrong medium type"],
+            125 : ["ECANCELED",       "Operation Canceled"],
+            126 : ["ENOKEY",          "Required key not available"],
+            127 : ["EKEYEXPIRED",     "Key has expired"],
+            128 : ["EKEYREVOKED",     "Key has been revoked"],
+            129 : ["EKEYREJECTED",    "Key was rejected by service"],
+            130 : ["EOWNERDEAD",      "Owner died"],
+            131 : ["ENOTRECOVERABLE", "State not recoverable"],
+            132 : ["ERFKILL",         "Operation not possible due to RF-kill"],
+            133 : ["EHWPOISON",       "Memory page has hardware error"],
+        }
+
+        if is_alpha():
+            ERRNO_DICT = {
+                # arch/alpha/include/uapi/asm/errno.h
+                11  : ["EDEADLK",         "Resource deadlock would occur"], # override
+                #
+                35  : ["EAGAIN",          "Try again"],
+                36  : ["EINPROGRESS",     "Operation now in progress"],
+                37  : ["EALREADY",        "Operation already in progress"],
+                38  : ["ENOTSOCK",        "Socket operation on non-socket"],
+                39  : ["EDESTADDRREQ",    "Destination address required"],
+                40  : ["EMSGSIZE",        "Message too long"],
+                41  : ["EPROTOTYPE",      "Protocol wrong type for socket"],
+                42  : ["ENOPROTOOPT",     "Protocol not available"],
+                43  : ["EPROTONOSUPPORT", "Protocol not supported"],
+                44  : ["ESOCKTNOSUPPORT", "Socket type not supported"],
+                45  : ["EOPNOTSUPP",      "Operation not supported on transport endpoint"],
+                46  : ["EPFNOSUPPORT",    "Protocol family not supported"],
+                47  : ["EAFNOSUPPORT",    "Address family not supported by protocol"],
+                48  : ["EADDRINUSE",      "Address already in use"],
+                49  : ["EADDRNOTAVAIL",   "Cannot assign requested address"],
+                50  : ["ENETDOWN",        "Network is down"],
+                51  : ["ENETUNREACH",     "Network is unreachable"],
+                52  : ["ENETRESET",       "Network dropped connection because of reset"],
+                53  : ["ECONNABORTED",    "Software caused connection abort"],
+                54  : ["ECONNRESET",      "Connection reset by peer"],
+                55  : ["ENOBUFS",         "No buffer space available"],
+                56  : ["EISCONN",         "Transport endpoint is already connected"],
+                57  : ["ENOTCONN",        "Transport endpoint is not connected"],
+                58  : ["ESHUTDOWN",       "Cannot send after transport endpoint shutdown"],
+                59  : ["ETOOMANYREFS",    "Too many references: cannot splice"],
+                60  : ["ETIMEDOUT",       "Connection timed out"],
+                61  : ["ECONNREFUSED",    "Connection refused"],
+                62  : ["ELOOP",           "Too many symbolic links encountered"],
+                63  : ["ENAMETOOLONG",    "File name too long"],
+                64  : ["EHOSTDOWN",       "Host is down"],
+                65  : ["EHOSTUNREACH",    "No route to host"],
+                66  : ["ENOTEMPTY",       "Directory not empty"],
+                # 67
+                68  : ["EUSERS",          "Too many users"],
+                69  : ["EDQUOT",          "Quota exceeded"],
+                70  : ["ESTALE",          "Stale file handle"],
+                71  : ["EREMOTE",         "Object is remote"],
+                # 72-76
+                77  : ["ENOLCK",          "No record locks available"],
+                78  : ["ENOSYS",          "Function not implemented"],
+                # 79
+                80  : ["ENOMSG",          "No message of desired type"],
+                81  : ["EIDRM",           "Identifier removed"],
+                82  : ["ENOSR",           "Out of streams resources"],
+                83  : ["ETIME",           "Timer expired"],
+                84  : ["EBADMSG",         "Not a data message"],
+                85  : ["EPROTO",          "Protocol error"],
+                86  : ["ENODATA",         "No data available"],
+                87  : ["ENOSTR",          "Device not a stream"],
+                88  : ["ECHRNG",          "Channel number out of range"],
+                89  : ["EL2NSYNC",        "Level 2 not synchronized"],
+                90  : ["EL3HLT",          "Level 3 halted"],
+                91  : ["EL3RST",          "Level 3 reset"],
+                92  : ["ENOPKG",          "Package not installed"],
+                93  : ["ELNRNG",          "Link number out of range"],
+                94  : ["EUNATCH",         "Protocol driver not attached"],
+                95  : ["ENOCSI",          "No CSI structure available"],
+                96  : ["EL2HLT",          "Level 2 halted"],
+                97  : ["EBADE",           "Invalid exchange"],
+                98  : ["EBADR",           "Invalid request descriptor"],
+                99  : ["EXFULL",          "Exchange full"],
+                100 : ["ENOANO",          "No anode"],
+                101 : ["EBADRQC",         "Invalid request code"],
+                102 : ["EBADSLT",         "Invalid slot"],
+                # 103
+                104 : ["EBFONT",          "Bad font file format"],
+                105 : ["ENONET",          "Machine is not on the network"],
+                106 : ["ENOLINK",         "Link has been severed"],
+                107 : ["EADV",            "Advertise error"],
+                108 : ["ESRMNT",          "Srmount error"],
+                109 : ["ECOMM",           "Communication error on send"],
+                110 : ["EMULTIHOP",       "Multihop attempted"],
+                111 : ["EDOTDOT",         "RFS specific error"],
+                112 : ["EOVERFLOW",       "Value too large for defined data type"],
+                113 : ["ENOTUNIQ",        "Name not unique on network"],
+                114 : ["EBADFD",          "File descriptor in bad state"],
+                115 : ["EREMCHG",         "Remote address changed"],
+                116 : ["EILSEQ",          "Illegal byte sequence"],
+                117 : ["EUCLEAN",         "Structure needs cleaning"],
+                118 : ["ENOTNAM",         "Not a XENIX named type file"],
+                119 : ["ENAVAIL",         "No XENIX semaphores available"],
+                120 : ["EISNAM",          "Is a named type file"],
+                121 : ["EREMOTEIO",       "Remote I/O error"],
+                122 : ["ELIBACC",         "Can not access a needed shared library"],
+                123 : ["ELIBBAD",         "Accessing a corrupted shared library"],
+                124 : ["ELIBSCN",         ".lib section in a.out corrupted"],
+                125 : ["ELIBMAX",         "Attempting to link in too many shared libraries"],
+                126 : ["ELIBEXEC",        "Cannot exec a shared library directly"],
+                127 : ["ERESTART",        "Interrupted system call should be restarted"],
+                128 : ["ESTRPIPE",        "Streams pipe error"],
+                129 : ["ENOMEDIUM",       "No medium found"],
+                130 : ["EMEDIUMTYPE",     "Wrong medium type"],
+                131 : ["ECANCELED",       "Operation Canceled"],
+                132 : ["ENOKEY",          "Required key not available"],
+                133 : ["EKEYEXPIRED",     "Key has expired"],
+                134 : ["EKEYREVOKED",     "Key has been revoked"],
+                135 : ["EKEYREJECTED",    "Key was rejected by service"],
+                136 : ["EOWNERDEAD",      "Owner died"],
+                137 : ["ENOTRECOVERABLE", "State not recoverable"],
+                138 : ["ERFKILL",         "Operation not possible due to RF-kill"],
+                139 : ["EHWPOISON",       "Memory page has hardware error"],
+            }
+        elif is_mips32() or is_mips64() or is_mipsn32():
+            ERRNO_DICT = {
+                35  : ["ENOMSG",          "No message of desired type"],
+                36  : ["EIDRM",           "Identifier removed"],
+                37  : ["ECHRNG",          "Channel number out of range"],
+                38  : ["EL2NSYNC",        "Level 2 not synchronized"],
+                39  : ["EL3HLT",          "Level 3 halted"],
+                40  : ["EL3RST",          "Level 3 reset"],
+                41  : ["ELNRNG",          "Link number out of range"],
+                42  : ["EUNATCH",         "Protocol driver not attached"],
+                43  : ["ENOCSI",          "No CSI structure available"],
+                44  : ["EL2HLT",          "Level 2 halted"],
+                45  : ["EDEADLK",         "Resource deadlock would occur"],
+                46  : ["ENOLCK",          "No record locks available"],
+                # 47-49
+                50  : ["EBADE",           "Invalid exchange"],
+                51  : ["EBADR",           "Invalid request descriptor"],
+                52  : ["EXFULL",          "Exchange full"],
+                53  : ["ENOANO",          "No anode"],
+                54  : ["EBADRQC",         "Invalid request code"],
+                55  : ["EBADSLT",         "Invalid slot"],
+                56  : ["EDEADLOCK",       "File locking deadlock error"],
+                # 57-58
+                59  : ["EBFONT",          "Bad font file format"],
+                60  : ["ENOSTR",          "Device not a stream"],
+                61  : ["ENODATA",         "No data available"],
+                62  : ["ETIME",           "Timer expired"],
+                63  : ["ENOSR",           "Out of streams resources"],
+                64  : ["ENONET",          "Machine is not on the network"],
+                65  : ["ENOPKG",          "Package not installed"],
+                66  : ["EREMOTE",         "Object is remote"],
+                67  : ["ENOLINK",         "Link has been severed"],
+                68  : ["EADV",            "Advertise error"],
+                69  : ["ESRMNT",          "Srmount error"],
+                70  : ["ECOMM",           "Communication error on send"],
+                71  : ["EPROTO",          "Protocol error"],
+                # 72
+                73  : ["EDOTDOT",         "RFS specific error"],
+                74  : ["EMULTIHOP",       "Multihop attempted"],
+                # 75-76
+                77  : ["EBADMSG",         "Not a data message"],
+                78  : ["ENAMETOOLONG",    "File name too long"],
+                79  : ["EOVERFLOW",       "Value too large for defined data type"],
+                80  : ["ENOTUNIQ",        "Name not unique on network"],
+                81  : ["EBADFD",          "File descriptor in bad state"],
+                82  : ["EREMCHG",         "Remote address changed"],
+                83  : ["ELIBACC",         "Can not access a needed shared library"],
+                84  : ["ELIBBAD",         "Accessing a corrupted shared library"],
+                85  : ["ELIBSCN",         ".lib section in a.out corrupted"],
+                86  : ["ELIBMAX",         "Attempting to link in too many shared libraries"],
+                87  : ["ELIBEXEC",        "Cannot exec a shared library directly"],
+                88  : ["EILSEQ",          "Illegal byte sequence"],
+                89  : ["ENOSYS",          "Function not implemented"],
+                90  : ["ELOOP",           "Too many symbolic links encountered"],
+                91  : ["ERESTART",        "Interrupted system call should be restarted"],
+                92  : ["ESTRPIPE",        "Streams pipe error"],
+                93  : ["ENOTEMPTY",       "Directory not empty"],
+                94  : ["EUSERS",          "Too many users"],
+                95  : ["ENOTSOCK",        "Socket operation on non-socket"],
+                96  : ["EDESTADDRREQ",    "Destination address required"],
+                97  : ["EMSGSIZE",        "Message too long"],
+                98  : ["EPROTOTYPE",      "Protocol wrong type for socket"],
+                99  : ["ENOPROTOOPT",     "Protocol not available"],
+                # 100-119
+                120 : ["EPROTONOSUPPORT", "Protocol not supported"],
+                121 : ["ESOCKTNOSUPPORT", "Socket type not supported"],
+                122 : ["EOPNOTSUPP",      "Operation not supported on transport endpoint"],
+                123 : ["EPFNOSUPPORT",    "Protocol family not supported"],
+                124 : ["EAFNOSUPPORT",    "Address family not supported by protocol"],
+                125 : ["EADDRINUSE",      "Address already in use"],
+                126 : ["EADDRNOTAVAIL",   "Cannot assign requested address"],
+                127 : ["ENETDOWN",        "Network is down"],
+                128 : ["ENETUNREACH",     "Network is unreachable"],
+                129 : ["ENETRESET",       "Network dropped connection because of reset"],
+                130 : ["ECONNABORTED",    "Software caused connection abort"],
+                131 : ["ECONNRESET",      "Connection reset by peer"],
+                132 : ["ENOBUFS",         "No buffer space available"],
+                133 : ["EISCONN",         "Transport endpoint is already connected"],
+                134 : ["ENOTCONN",        "Transport endpoint is not connected"],
+                135 : ["EUCLEAN",         "Structure needs cleaning"],
+                # 136
+                137 : ["ENOTNAM",         "Not a XENIX named type file"],
+                138 : ["ENAVAIL",         "No XENIX semaphores available"],
+                139 : ["EISNAM",          "Is a named type file"],
+                140 : ["EREMOTEIO",       "Remote I/O error"],
+                141 : ["EINIT",           "Reserved"],
+                142 : ["EREMDEV",         "Error 142"],
+                143 : ["ESHUTDOWN",       "Cannot send after transport endpoint shutdown"],
+                144 : ["ETOOMANYREFS",    "Too many references: cannot splice"],
+                145 : ["ETIMEDOUT",       "Connection timed out"],
+                146 : ["ECONNREFUSED",    "Connection refused"],
+                147 : ["EHOSTDOWN",       "Host is down"],
+                148 : ["EHOSTUNREACH",    "No route to host"],
+                149 : ["EALREADY",        "Operation already in progress"],
+                150 : ["EINPROGRESS",     "Operation now in progress"],
+                151 : ["ESTALE",          "Stale file handle"],
+                # 152-157
+                158 : ["ECANCELED",       "AIO operation canceled"],
+                159 : ["ENOMEDIUM",       "No medium found"],
+                160 : ["EMEDIUMTYPE",     "Wrong medium type"],
+                161 : ["ENOKEY",          "Required key not available"],
+                162 : ["EKEYEXPIRED",     "Key has expired"],
+                163 : ["EKEYREVOKED",     "Key has been revoked"],
+                164 : ["EKEYREJECTED",    "Key was rejected by service"],
+                165 : ["EOWNERDEAD",      "Owner died"],
+                166 : ["ENOTRECOVERABLE", "State not recoverable"],
+                167 : ["ERFKILL",         "Operation not possible due to RF-kill"],
+                168 : ["EHWPOISON",       "Memory page has hardware error"],
+                #
+                1133: ["EDQUOT",          "Quota exceeded"],
+            }
+        elif is_hppa32() or is_hppa64():
+            ERRNO_DICT = {
+                35 :  ["ENOMSG",          "No message of desired type"],
+                36 :  ["EIDRM",           "Identifier removed"],
+                37 :  ["ECHRNG",          "Channel number out of range"],
+                38 :  ["EL2NSYNC",        "Level 2 not synchronized"],
+                39 :  ["EL3HLT",          "Level 3 halted"],
+                40 :  ["EL3RST",          "Level 3 reset"],
+                41 :  ["ELNRNG",          "Link number out of range"],
+                42 :  ["EUNATCH",         "Protocol driver not attached"],
+                43 :  ["ENOCSI",          "No CSI structure available"],
+                44 :  ["EL2HLT",          "Level 2 halted"],
+                45 :  ["EDEADLK",         "Resource deadlock would occur"],
+                46 :  ["ENOLCK",          "No record locks available"],
+                47 :  ["EILSEQ",          "Illegal byte sequence"],
+                # 48-49
+                50 :  ["ENONET",          "Machine is not on the network"],
+                51 :  ["ENODATA",         "No data available"],
+                52 :  ["ETIME",           "Timer expired"],
+                53 :  ["ENOSR",           "Out of streams resources"],
+                54 :  ["ENOSTR",          "Device not a stream"],
+                55 :  ["ENOPKG",          "Package not installed"],
+                # 56
+                57 :  ["ENOLINK",         "Link has been severed"],
+                58 :  ["EADV",            "Advertise error"],
+                59 :  ["ESRMNT",          "Srmount error"],
+                60 :  ["ECOMM",           "Communication error on send"],
+                61 :  ["EPROTO",          "Protocol error"],
+                # 62-63
+                64 :  ["EMULTIHOP",       "Multihop attempted"],
+                # 65
+                66 :  ["EDOTDOT",         "RFS specific error"],
+                67 :  ["EBADMSG",         "Not a data message"],
+                68 :  ["EUSERS",          "Too many users"],
+                69 :  ["EDQUOT",          "Quota exceeded"],
+                70 :  ["ESTALE",          "Stale file handle"],
+                71 :  ["EREMOTE",         "Object is remote"],
+                72 :  ["EOVERFLOW",       "Value too large for defined data type"],
+                # 73-159
+                160 : ["EBADE",           "Invalid exchange"],
+                161 : ["EBADR",           "Invalid request descriptor"],
+                162 : ["EXFULL",          "Exchange full"],
+                163 : ["ENOANO",          "No anode"],
+                164 : ["EBADRQC",         "Invalid request code"],
+                165 : ["EBADSLT",         "Invalid slot"],
+                166 : ["EBFONT",          "Bad font file format"],
+                167 : ["ENOTUNIQ",        "Name not unique on network"],
+                168 : ["EBADFD",          "File descriptor in bad state"],
+                169 : ["EREMCHG",         "Remote address changed"],
+                170 : ["ELIBACC",         "Can not access a needed shared library"],
+                171 : ["ELIBBAD",         "Accessing a corrupted shared library"],
+                172 : ["ELIBSCN",         ".lib section in a.out corrupted"],
+                173 : ["ELIBMAX",         "Attempting to link in too many shared libraries"],
+                174 : ["ELIBEXEC",        "Cannot exec a shared library directly"],
+                175 : ["ERESTART",        "Interrupted system call should be restarted"],
+                176 : ["ESTRPIPE",        "Streams pipe error"],
+                177 : ["EUCLEAN",         "Structure needs cleaning"],
+                178 : ["ENOTNAM",         "Not a XENIX named type file"],
+                179 : ["ENAVAIL",         "No XENIX semaphores available"],
+                180 : ["EISNAM",          "Is a named type file"],
+                181 : ["EREMOTEIO",       "Remote I/O error"],
+                182 : ["ENOMEDIUM",       "No medium found"],
+                183 : ["EMEDIUMTYPE",     "Wrong medium type"],
+                184 : ["ENOKEY",          "Required key not available"],
+                185 : ["EKEYEXPIRED",     "Key has expired"],
+                186 : ["EKEYREVOKED",     "Key has been revoked"],
+                187 : ["EKEYREJECTED",    "Key was rejected by service"],
+                # 188-215
+                216 : ["ENOTSOCK",        "Socket operation on non-socket"],
+                217 : ["EDESTADDRREQ",    "Destination address required"],
+                218 : ["EMSGSIZE",        "Message too long"],
+                219 : ["EPROTOTYPE",      "Protocol wrong type for socket"],
+                220 : ["ENOPROTOOPT",     "Protocol not available"],
+                221 : ["EPROTONOSUPPORT", "Protocol not supported"],
+                222 : ["ESOCKTNOSUPPORT", "Socket type not supported"],
+                223 : ["EOPNOTSUPP",      "Operation not supported on transport endpoint"],
+                224 : ["EPFNOSUPPORT",    "Protocol family not supported"],
+                225 : ["EAFNOSUPPORT",    "Address family not supported by protocol"],
+                226 : ["EADDRINUSE",      "Address already in use"],
+                227 : ["EADDRNOTAVAIL",   "Cannot assign requested address"],
+                228 : ["ENETDOWN",        "Network is down"],
+                229 : ["ENETUNREACH",     "Network is unreachable"],
+                230 : ["ENETRESET",       "Network dropped connection because of reset"],
+                231 : ["ECONNABORTED",    "Software caused connection abort"],
+                232 : ["ECONNRESET",      "Connection reset by peer"],
+                233 : ["ENOBUFS",         "No buffer space available"],
+                234 : ["EISCONN",         "Transport endpoint is already connected"],
+                235 : ["ENOTCONN",        "Transport endpoint is not connected"],
+                236 : ["ESHUTDOWN",       "Cannot send after transport endpoint shutdown"],
+                237 : ["ETOOMANYREFS",    "Too many references: cannot splice"],
+                238 : ["ETIMEDOUT",       "Connection timed out"],
+                239 : ["ECONNREFUSED",    "Connection refused"],
+                # 240
+                241 : ["EHOSTDOWN",       "Host is down"],
+                242 : ["EHOSTUNREACH",    "No route to host"],
+                # 243
+                244 : ["EALREADY",        "Operation already in progress"],
+                245 : ["EINPROGRESS",     "Operation now in progress"],
+                # 246
+                247 : ["ENOTEMPTY",       "Directory not empty"],
+                248 : ["ENAMETOOLONG",    "File name too long"],
+                249 : ["ELOOP",           "Too many symbolic links encountered"],
+                # 250
+                251 : ["ENOSYS",          "Function not implemented"],
+                # 252
+                253 : ["ECANCELLED",      "aio request was canceled before complete (POSIX.4 / HPUX)"],
+                254 : ["EOWNERDEAD",      "Owner died"],
+                255 : ["ENOTRECOVERABLE", "State not recoverable"],
+                256 : ["ERFKILL",         "Operation not possible due to RF-kill"],
+                257 : ["EHWPOISON",       "Memory page has hardware error"],
+            }
+        elif is_sparc32() or is_sparc64():
+            ERRNO_DICT = {
+                36  : ["EINPROGRESS",     "Operation now in progress"],
+                37  : ["EALREADY",        "Operation already in progress"],
+                38  : ["ENOTSOCK",        "Socket operation on non-socket"],
+                39  : ["EDESTADDRREQ",    "Destination address required"],
+                40  : ["EMSGSIZE",        "Message too long"],
+                41  : ["EPROTOTYPE",      "Protocol wrong type for socket"],
+                42  : ["ENOPROTOOPT",     "Protocol not available"],
+                43  : ["EPROTONOSUPPORT", "Protocol not supported"],
+                44  : ["ESOCKTNOSUPPORT", "Socket type not supported"],
+                45  : ["EOPNOTSUPP",      "Op not supported on transport endpoint"],
+                46  : ["EPFNOSUPPORT",    "Protocol family not supported"],
+                47  : ["EAFNOSUPPORT",    "Address family not supported by protocol"],
+                48  : ["EADDRINUSE",      "Address already in use"],
+                49  : ["EADDRNOTAVAIL",   "Cannot assign requested address"],
+                50  : ["ENETDOWN",        "Network is down"],
+                51  : ["ENETUNREACH",     "Network is unreachable"],
+                52  : ["ENETRESET",       "Net dropped connection because of reset"],
+                53  : ["ECONNABORTED",    "Software caused connection abort"],
+                54  : ["ECONNRESET",      "Connection reset by peer"],
+                55  : ["ENOBUFS",         "No buffer space available"],
+                56  : ["EISCONN",         "Transport endpoint is already connected"],
+                57  : ["ENOTCONN",        "Transport endpoint is not connected"],
+                58  : ["ESHUTDOWN",       "No send after transport endpoint shutdown"],
+                59  : ["ETOOMANYREFS",    "Too many references: cannot splice"],
+                60  : ["ETIMEDOUT",       "Connection timed out"],
+                61  : ["ECONNREFUSED",    "Connection refused"],
+                62  : ["ELOOP",           "Too many symbolic links encountered"],
+                63  : ["ENAMETOOLONG",    "File name too long"],
+                64  : ["EHOSTDOWN",       "Host is down"],
+                65  : ["EHOSTUNREACH",    "No route to host"],
+                66  : ["ENOTEMPTY",       "Directory not empty"],
+                67  : ["EPROCLIM",        "SUNOS: Too many processes"],
+                68  : ["EUSERS",          "Too many users"],
+                69  : ["EDQUOT",          "Quota exceeded"],
+                70  : ["ESTALE",          "Stale file handle"],
+                71  : ["EREMOTE",         "Object is remote"],
+                72  : ["ENOSTR",          "Device not a stream"],
+                73  : ["ETIME",           "Timer expired"],
+                74  : ["ENOSR",           "Out of streams resources"],
+                75  : ["ENOMSG",          "No message of desired type"],
+                76  : ["EBADMSG",         "Not a data message"],
+                77  : ["EIDRM",           "Identifier removed"],
+                78  : ["EDEADLK",         "Resource deadlock would occur"],
+                79  : ["ENOLCK",          "No record locks available"],
+                80  : ["ENONET",          "Machine is not on the network"],
+                81  : ["ERREMOTE",        "SunOS: Too many lvls of remote in path"],
+                82  : ["ENOLINK",         "Link has been severed"],
+                83  : ["EADV",            "Advertise error"],
+                84  : ["ESRMNT",          "Srmount error"],
+                85  : ["ECOMM",           "Communication error on send"],
+                86  : ["EPROTO",          "Protocol error"],
+                87  : ["EMULTIHOP",       "Multihop attempted"],
+                88  : ["EDOTDOT",         "RFS specific error"],
+                89  : ["EREMCHG",         "Remote address changed"],
+                90  : ["ENOSYS",          "Function not implemented"],
+                91  : ["ESTRPIPE",        "Streams pipe error"],
+                92  : ["EOVERFLOW",       "Value too large for defined data type"],
+                93  : ["EBADFD",          "File descriptor in bad state"],
+                94  : ["ECHRNG",          "Channel number out of range"],
+                95  : ["EL2NSYNC",        "Level 2 not synchronized"],
+                96  : ["EL3HLT",          "Level 3 halted"],
+                97  : ["EL3RST",          "Level 3 reset"],
+                98  : ["ELNRNG",          "Link number out of range"],
+                99  : ["EUNATCH",         "Protocol driver not attached"],
+                100 : ["ENOCSI",          "No CSI structure available"],
+                101 : ["EL2HLT",          "Level 2 halted"],
+                102 : ["EBADE",           "Invalid exchange"],
+                103 : ["EBADR",           "Invalid request descriptor"],
+                104 : ["EXFULL",          "Exchange full"],
+                105 : ["ENOANO",          "No anode"],
+                106 : ["EBADRQC",         "Invalid request code"],
+                107 : ["EBADSLT",         "Invalid slot"],
+                108 : ["EDEADLOCK",       "File locking deadlock error"],
+                109 : ["EBFONT",          "Bad font file format"],
+                110 : ["ELIBEXEC",        "Cannot exec a shared library directly"],
+                111 : ["ENODATA",         "No data available"],
+                112 : ["ELIBBAD",         "Accessing a corrupted shared library"],
+                113 : ["ENOPKG",          "Package not installed"],
+                114 : ["ELIBACC",         "Can not access a needed shared library"],
+                115 : ["ENOTUNIQ",        "Name not unique on network"],
+                116 : ["ERESTART",        "Interrupted syscall should be restarted"],
+                117 : ["EUCLEAN",         "Structure needs cleaning"],
+                118 : ["ENOTNAM",         "Not a XENIX named type file"],
+                119 : ["ENAVAIL",         "No XENIX semaphores available"],
+                120 : ["EISNAM",          "Is a named type file"],
+                121 : ["EREMOTEIO",       "Remote I/O error"],
+                122 : ["EILSEQ",          "Illegal byte sequence"],
+                123 : ["ELIBMAX",         "Atmpt to link in too many shared libs"],
+                124 : ["ELIBSCN",         ".lib section in a.out corrupted"],
+                125 : ["ENOMEDIUM",       "No medium found"],
+                126 : ["EMEDIUMTYPE",     "Wrong medium type"],
+                127 : ["ECANCELED",       "Operation Cancelled"],
+                128 : ["ENOKEY",          "Required key not available"],
+                129 : ["EKEYEXPIRED",     "Key has expired"],
+                130 : ["EKEYREVOKED",     "Key has been revoked"],
+                131 : ["EKEYREJECTED",    "Key was rejected by service"],
+                132 : ["EOWNERDEAD",      "Owner died"],
+                133 : ["ENOTRECOVERABLE", "State not recoverable"],
+                134 : ["ERFKILL",         "Operation not possible due to RF-kill"],
+                135 : ["EHWPOISON",       "Memory page has hardware error"],
+            }
+
+        return ERRNO_BASE_DICT | ERRNO_DICT
 
     @parse_args
     @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
+
+        ERRNO_DICT = ErrnoCommand.get_errno_dict()
+
         if args.all:
-            for val, es in sorted(self.ERRNO_DICT.items()):
-                gef_print('{:3d} (={:#4x}): {:<15s}: "{:s}"'.format(val, val, es[0], es[1]))
+            self.out = []
+            for val, (sym, desc) in sorted(ERRNO_DICT.items()):
+                self.out.append('{:3d} (={:#4x}): {:<15s}: "{:s}"'.format(val, val, sym, desc))
+            self.print_output(args, term=True)
             return
 
         if args.errno is None:
@@ -47156,7 +48864,7 @@ class ErrnoCommand(GenericCommand):
                 return
             try:
                 val = AddressUtil.parse_address("*__errno_location()")
-            except Exception:
+            except gdb.error:
                 err("Failed to get *__errno_location()")
                 return
         else:
@@ -47170,23 +48878,24 @@ class ErrnoCommand(GenericCommand):
             elif current_arch is None:
                 val = struct.unpack("<q", struct.pack("<Q", val))[0]
             else:
-                err("not support this pointer size.")
+                err("Not supported this pointer size")
                 return
 
         if val < 0:
             val = -val
 
-        if val in self.ERRNO_DICT:
-            es = self.ERRNO_DICT[val]
-            gef_print('{:3d} (={:#4x}): {:<15s}: "{:s}"'.format(val, val, es[0], es[1]))
+        if val in ERRNO_DICT:
+            sym, desc = ERRNO_DICT[val]
+            gef_print('{:3d} (={:#4x}): {:<15s}: "{:s}"'.format(val, val, sym, desc))
         else:
-            err("Not found value in ERRNO_DICT (1~{:d})".format(len(self.ERRNO_DICT)))
+            err("Not found value in ERRNO_DICT")
         return
 
 
 @register_command
 class ExtractHeapAddrCommand(GenericCommand):
     """Extract heap address from protected `fd` pointer of single linked-list (introduced from glibc 2.32)."""
+
     _cmdline_ = "extract-heap-addr"
     _category_ = "06-a. Heap - Glibc"
 
@@ -47227,8 +48936,39 @@ class ExtractHeapAddrCommand(GenericCommand):
 
 
 @register_command
+class CalcProtectedFdCommand(GenericCommand):
+    """Calculate a valid value as protected `fd` pointer of single linked-list (introduced from glibc 2.32)."""
+
+    _cmdline_ = "calc-protected-fd"
+    _category_ = "06-a. Heap - Glibc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("fd", type=lambda x: int(x, 0), help="the fd value.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
+                        help="the address to interpret as a chunk.")
+    parser.add_argument("-b", "--as-base", action="store_true",
+                        help="use LOCATION as chunk base address (chunk_base_address = chunk_address - ptrsize * 2).")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0 0x5555555594e0\n".format(_cmdline_)
+    _example_ += "{:s} 0 0x5555555594e0 -b".format(_cmdline_)
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        loc = args.location
+        if args.as_base:
+            loc -= current_arch.ptrsize * 2
+        ptr = (loc >> 12) ^ args.fd
+        gef_print("Protected fd pointer: {:#x}".format(ptr))
+        return
+
+
+@register_command
 class FindFakeFastCommand(GenericCommand, BufferingOutput):
     """Find candidate fake fast chunks from RW memory."""
+
     _cmdline_ = "find-fake-fast"
     _category_ = "06-a. Heap - Glibc"
 
@@ -47325,6 +49065,7 @@ class FindFakeFastCommand(GenericCommand, BufferingOutput):
 @register_command
 class VisualHeapCommand(GenericCommand):
     """Visualize chunks on a heap."""
+
     _cmdline_ = "visual-heap"
     _category_ = "06-a. Heap - Glibc"
 
@@ -47529,6 +49270,7 @@ class VisualHeapCommand(GenericCommand):
 @register_command
 class DistanceCommand(GenericCommand):
     """Calculate the offset from its base address."""
+
     _cmdline_ = "distance"
     _category_ = "09-f. Misc - Calculation"
 
@@ -47568,6 +49310,7 @@ class DistanceCommand(GenericCommand):
 @register_command
 class U2dCommand(GenericCommand):
     """Convert type (unsigned long <-> double/float)."""
+
     _cmdline_ = "u2d"
     _category_ = "09-a. Misc - Conversion"
 
@@ -47653,6 +49396,7 @@ class U2dCommand(GenericCommand):
 @register_command
 class UnsignedCommand(GenericCommand):
     """Convert the negative number to unsigned."""
+
     _cmdline_ = "unsigned"
     _category_ = "09-a. Misc - Conversion"
     _aliases_ = ["us", "signed"]
@@ -47694,6 +49438,7 @@ class UnsignedCommand(GenericCommand):
 @register_command
 class ConvertCommand(GenericCommand):
     """Convert values to various (pack, pack-hex, unpack, tohex, unhex, byteswap, etc.)."""
+
     _cmdline_ = "convert"
     _category_ = "09-a. Misc - Conversion"
     _aliases_ = ["transform", "trans"]
@@ -48663,36 +50408,12 @@ class KernelAddressHeuristicFinder:
             # search init_task->tasks
             for i in range(0x200):
                 offset_tasks = current_arch.ptrsize * i
-                pos1 = current_task + offset_tasks
-                pos2 = current_task + offset_tasks + current_arch.ptrsize
-                list1 = [pos1]
-                list2 = [pos2]
-                # validating candidate offset
-                while True:
-                    # read check
-                    if not is_valid_addr(pos1) or not is_valid_addr(pos2):
-                        found = False
-                        break
-                    pos1 = read_int_from_memory(pos1)
-                    pos2 = read_int_from_memory(pos2) + current_arch.ptrsize
-                    # list validate
-                    if pos1 in list1[1:] or pos2 in list2[1:]: # incomplete infinity loop detected
-                        found = False
-                        break
-                    if (pos1 == list1[0] and len(list1) == 1) or (pos2 == list2[0] and len(list2) == 1): # self reference
-                        found = False
-                        break
-                    if (pos1 == list1[0] and len(list1) > 5) and (pos2 == list2[0] and len(list2) > 5): # maybe link list
-                        found = True
-                        break
-                    list1.append(pos1)
-                    list2.append(pos2)
-                if found:
+                if is_double_link_list(current_task + offset_tasks, min_len=5):
                     return offset_tasks
             return None
 
-        def get_task_list(init_task, offset_tasks):
-            pos = init_task + offset_tasks
+        def get_task_list(task, offset_tasks):
+            pos = task + offset_tasks
             task_list = [pos]
             # validating candidate offset
             while True:
@@ -48881,18 +50602,6 @@ class KernelAddressHeuristicFinder:
                 return x
 
         kversion = Kernel.kernel_version()
-
-        def is_single_link_list(x):
-            seen = []
-            while True:
-                if x == 0:
-                    return True
-                if x in seen:
-                    return False
-                seen.append(x)
-                if not is_valid_addr(x):
-                    return False
-                x = read_int_from_memory(x)
 
         # plan 2 (available v2.6.16.12 or later)
         if kversion and kversion >= "2.6.17":
@@ -49461,7 +51170,7 @@ class KernelAddressHeuristicFinder:
                 res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 for x in g:
-                    s = read_cstring_from_memory(x, ascii_only=True)
+                    s = read_cstring_from_memory(x)
                     if not s:
                         return read_int_from_memory(x)
 
@@ -49901,7 +51610,7 @@ class KernelAddressHeuristicFinder:
                             w = read_int_from_memory(v)
                             if not is_valid_addr(w):
                                 continue
-                            s = read_cstring_from_memory(w, ascii_only=True) # name
+                            s = read_cstring_from_memory(w) # name
                             if s and len(s) > 2:
                                 return x
         return None
@@ -50439,7 +52148,7 @@ class KernelAddressHeuristicFinder:
                     name = read_int_from_memory(maybe_vdso_info)
                     if not is_valid_addr(name):
                         continue
-                    if read_cstring_from_memory(name, ascii_only=True) == "vdso":
+                    if read_cstring_from_memory(name) == "vdso":
                         return maybe_vdso_info
         return None
 
@@ -50509,7 +52218,7 @@ class KernelAddressHeuristicFinder:
                     name = read_int_from_memory(maybe_vdso_lookup)
                     if not is_valid_addr(name):
                         continue
-                    if read_cstring_from_memory(name, ascii_only=True) == "vdso":
+                    if read_cstring_from_memory(name) == "vdso":
                         return maybe_vdso_lookup
         return None
 
@@ -51345,12 +53054,12 @@ class KernelAddressHeuristicFinder:
                 for x in g:
                     name_ptr = read_int_from_memory(x + 0x8 * 2) # sizeof(resource_size_t) == 8
                     if name_ptr and is_valid_addr(name_ptr):
-                        name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                        name = read_cstring_from_memory(name_ptr)
                         if name == "PCI IO":
                             return x
                     name_ptr = read_int_from_memory(x + 0x4 * 2) # sizeof(resource_size_t) == 4
                     if name_ptr and is_valid_addr(name_ptr):
-                        name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                        name = read_cstring_from_memory(name_ptr)
                         if name == "PCI IO":
                             return x
 
@@ -51407,13 +53116,13 @@ class KernelAddressHeuristicFinder:
             offset_name = None
             name_ptr = read_int_from_memory(x + 0x8 * 2) # sizeof(resource_size_t) == 8
             if name_ptr and is_valid_addr(name_ptr):
-                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                name = read_cstring_from_memory(name_ptr)
                 if name == "PCI IO":
                     offset_name = 0x8 * 2
             if offset_name is None:
                 name_ptr = read_int_from_memory(x + 0x4 * 2) # sizeof(resource_size_t) == 4
                 if name_ptr and is_valid_addr(name_ptr):
-                    name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                    name = read_cstring_from_memory(name_ptr)
                     if name == "PCI IO":
                         offset_name = 0x4 * 2
 
@@ -51423,7 +53132,7 @@ class KernelAddressHeuristicFinder:
                     diff = (current_arch.ptrsize * i)
                     name_ptr = read_int_from_memory(x + diff)
                     if name_ptr and is_valid_addr(name_ptr):
-                        name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                        name = read_cstring_from_memory(name_ptr)
                         if name == "PCI mem":
                             return x + diff - offset_name
         return None
@@ -51544,6 +53253,8 @@ KFU = KernelAddressHeuristicFinderUtil # for convenience using from python-inter
 
 
 class Kernel:
+    """A collection of utility functions that are related to kernel specific features."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_maps():
@@ -51584,6 +53295,16 @@ class Kernel:
                 perm = line[6][4:7] # EL1/xxx
                 maps.append([vaddr, size, perm])
 
+        elif is_riscv64() or is_riscv32():
+            for line in res:
+                line = line.split()
+                if line[6] != "KERN]":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[5][1:] # [xxx
+                maps.append([vaddr, size, perm])
+
         if maps == []:
             if is_x86():
                 warn("Make sure you are in ring0 (=kernel mode)")
@@ -51593,6 +53314,8 @@ class Kernel:
             elif is_arm64():
                 warn("Make sure you are in EL1 (=kernel mode)")
                 warn("Make sure qemu 3.x or higher")
+            elif is_riscv64() or is_riscv32():
+                warn("Make sure you are in S-mode (=kernel mode)")
             return None
         else:
             return maps
@@ -51621,7 +53344,7 @@ class Kernel:
             dic["has_none"] = None in dic.values()
             return Kinfo(*dic.values())
 
-        # 1. search kernel base exact way for x86, arm64
+        # 1a. search kernel base exact way
         if is_x86():
             div0_handler = None
 
@@ -51629,15 +53352,19 @@ class Kernel:
                 # 0   #DE: Divide-by-zero 0x00000000ffffffffbd008e0000100870 0xe 0x0 0x0 0x1 0x0010:0xffffffffbd000870 <NO_SYMBOL>
                 res = gdb.execute("idtinfo --verbose", to_string=True)
                 r = re.search(r"Divide-by-zero.+\S+:(\S+)\s+<", res)
-                div0_handler = int(r.group(1), 16)
+                if r:
+                    div0_handler = int(r.group(1), 16)
+
             elif is_vmware():
                 res = gdb.execute("monitor r idtr", to_string=True)
                 r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
-                base = int(r.group(1), 16)
-                limit = int(r.group(2), 16)
-                idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
-                idt0 = IdtInfoCommand.idt_unpack(idtinfo[0])
-                div0_handler = idt0.offset
+                if r:
+                    base = int(r.group(1), 16)
+                    limit = int(r.group(2), 16)
+                    idt_data = read_memory(base, min(limit + 1, current_arch.ptrsize * 2 * 256))
+                    entries = slice_unpack(idt_data, current_arch.ptrsize * 2)
+                    idt0 = IdtInfoCommand.idt_unpack(entries[0])
+                    div0_handler = idt0.offset
 
             if div0_handler and is_valid_addr(div0_handler):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
@@ -51649,6 +53376,7 @@ class Kernel:
                         break
 
         elif is_arm64():
+            # `VBAR` register has interrupt vector address
             res = gdb.execute("sysreg --exact VBAR", to_string=True)
             res = Color.remove_color(res)
             r = re.search(r"VBAR\s+=\s+(0x\S+)", res)
@@ -51658,6 +53386,23 @@ class Kernel:
             if vbar and is_valid_addr(vbar):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
                     if vaddr <= vbar < vaddr + size:
+                        dic["text_base"] = vaddr
+                        dic["text_size"] = size
+                        dic["text_end"] = vaddr + size
+                        text_base_map_index = i
+                        break
+
+        elif is_riscv64() or is_riscv32():
+            # `stvec` register has interrupt vector address
+            res = gdb.execute("sysreg --exact stvec", to_string=True)
+            res = Color.remove_color(res)
+            r = re.search(r"stvec\s+=\s+(0x\S+)", res)
+            stvec = int(r.group(1), 16)
+            stvec &= gef_getpagesize_mask_high()
+
+            if stvec and is_valid_addr(stvec):
+                for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
+                    if vaddr <= stvec < vaddr + size:
                         dic["text_base"] = vaddr
                         dic["text_size"] = size
                         dic["text_end"] = vaddr + size
@@ -51691,18 +53436,23 @@ class Kernel:
                     dic["has_none"] = None in dic.values()
                     return Kinfo(*dic.values())
 
-        # 2. search kernel RO base
+        # 2a. search kernel RO base
         # If -enable-kvm option of qemu-system is not set, there may be multiple `r-- non-.rodata` between .text and .rodata.
+        #   [  .text    ]
+        #   [  .text    ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ .rodata   ] <- near the top of this area has "Linux version"
+        #   [ .rodata   ]
         # In other words, .rodata may not exist immediately after .text. I have seen this on qemu with debian11 x86_64 installed.
         # Therefore, detecting by location will not return correct results.
-        # Detecting by size seems well, but this algorithm sometimes failed. This is due to the difficulty of determining the threshold.
         # So I decided to also detect by the existence "Linux version" near the top of the .rodata page.
-        RO_REGION_MIN_SIZE = 0x100000
         for i, (vaddr, size, perm) in enumerate(dic["maps"][text_base_map_index + 1:]):
             if perm == "R--":
                 if dic["ro_base"] is None:
                     data = read_memory(vaddr, gef_getpagesize())
-                    if size >= RO_REGION_MIN_SIZE or b"Linux version" in data:
+                    if b"Linux version" in data:
                         dic["ro_base"] = vaddr
                         dic["ro_size"] = size
                         dic["ro_end"] = vaddr + size
@@ -51716,19 +53466,48 @@ class Kernel:
                 else:
                     break
 
-        # 2b. search kernel RO base for old kernel
+        # 2b. search kernel RO base by region size
+        # Some kernels do not have the string "Linux version" at the beginning of the .rodata.
+        #   [  .text    ]
+        #   [  .text    ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ .rodata   ] <- There is no "Linux Version" near the top of this area.
+        #   [ .rodata   ] <- but these .rodata total is large enough to determine .rodata.
+        #   [ .rodata   ]
+        if dic["ro_base"] is None:
+            RO_REGION_MIN_SIZE = 0x100000
+            for i, (vaddr, size, perm) in enumerate(dic["maps"][text_base_map_index + 1:]):
+                if perm == "R--":
+                    if dic["ro_base"] is None:
+                        if size >= RO_REGION_MIN_SIZE:
+                            dic["ro_base"] = vaddr
+                            dic["ro_size"] = size
+                            dic["ro_end"] = vaddr + size
+                            ro_base_map_index = text_base_map_index + i
+                    elif dic["ro_end"] == vaddr:
+                        # merge contiguous region.
+                        # This is important because .rodata may be split into areas for GLOBAL and non-GLOBAL attributes
+                        dic["ro_size"] += size
+                        dic["ro_end"] += size
+                        ro_base_map_index = text_base_map_index + i
+                    else:
+                        break
+
+        # 2c. search kernel RO base for old kernel
+        # If it can not detect .rodata, maybe it is an old kernel (32-bit?).
+        # Old kernel is no-NX, so .rodata is RWX.
+        # Detected .text range includes .rodata, so use heuristic search and split.
+        #   [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
+        #   [  .text  ]
+        #   [  .text  ]
+        #   [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
+        #   [ .rodata ] <- near the top of this area has "Linux version"
+        #   [ .rodata ]
+        #   [ .rodata ]
         if dic["ro_base"] is None:
             dic["rwx"] = True
-            # If it can not detect .rodata, maybe it is an old kernel (32-bit?).
-            # Old kernel is no-NX, so .rodata is RWX.
-            # Detected .text range includes .rodata, so use heuristic search and split.
-            #   [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
-            #   [  .text  ]
-            #   [  .text  ]
-            #   [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
-            #   [ .rodata ] <- near the top of this area has "Linux version"
-            #   [ .rodata ]
-            #   [ .rodata ]
             start = dic["text_base"] + gef_getpagesize() * 8
             end = dic["text_base"] + dic["text_size"]
             block_size = 0x20
@@ -51913,10 +53692,19 @@ class Kernel:
             return int(r.group(1), 16)
         return None
 
+    @staticmethod
+    def page2virt(page):
+        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
+        r = re.search(r"Virt: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
     """Display kernel base address."""
+
     _cmdline_ = "kbase"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -51928,7 +53716,7 @@ class KernelbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         if args.reparse:
@@ -51960,6 +53748,7 @@ class KernelbaseCommand(GenericCommand):
 @register_command
 class KernelVersionCommand(GenericCommand):
     """Display kernel version string."""
+
     _cmdline_ = "kversion"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -51971,7 +53760,7 @@ class KernelVersionCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         if args.reparse:
@@ -51995,6 +53784,7 @@ class KernelVersionCommand(GenericCommand):
 @register_command
 class KernelCmdlineCommand(GenericCommand):
     """Display kernel cmdline string."""
+
     _cmdline_ = "kcmdline"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -52030,6 +53820,7 @@ class KernelCmdlineCommand(GenericCommand):
 @register_command
 class KernelCurrentCommand(GenericCommand):
     """Display current task."""
+
     _cmdline_ = "kcurrent"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -52120,6 +53911,7 @@ class KernelCurrentCommand(GenericCommand):
 
     def dump_current_arm(self):
         orig_thread = gdb.selected_thread()
+        orig_frame = gdb.selected_frame()
         threads = gdb.selected_inferior().threads()
         threads = sorted(threads, key=lambda th: th.num)
         for thread in threads:
@@ -52129,6 +53921,7 @@ class KernelCurrentCommand(GenericCommand):
                 cpu_num = thread.num - 1 # ?
                 gef_print("current (cpu{:d}): {:#x} {:s}".format(cpu_num, task, self.get_comm_str(task)))
         orig_thread.switch() # revert thread
+        orig_frame.select()
         return
 
     def dump_current_x86(self):
@@ -52180,6 +53973,7 @@ class KernelCurrentCommand(GenericCommand):
 @register_command
 class KernelTaskCommand(GenericCommand):
     """Display process list."""
+
     _cmdline_ = "ktask"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -52198,6 +53992,8 @@ class KernelTaskCommand(GenericCommand):
                         help="print file descriptors for each user process.")
     parser.add_argument("-s", "--print-sighand", action="store_true",
                         help="print signals for each user process.")
+    parser.add_argument("-S", "--print-seccomp", action="store_true",
+                        help="print seccomp information for each user process.")
     parser.add_argument("-N", "--print-namespace", action="store_true",
                         help="print namespaces for each user process.")
     parser.add_argument("-u", "--user-process-only", action="store_true",
@@ -52213,46 +54009,47 @@ class KernelTaskCommand(GenericCommand):
     _note_ += "\n"
     _note_ += "Simplified task_struct structure:\n"
     _note_ += "\n"
-    _note_ += "    +-init_task---+      +-->+-kstack----+    +--->+-vm_area_struct--+\n"
-    _note_ += "    | list_head   |--+   |   | ...       |    |    | vm_start        |\n"
-    _note_ += "    +-------------+  |   |   | ...       |    |    | vm_end          |\n"
-    _note_ += "                     |   |   | ...       |    |    | vm_next (~6.1)  |\n"
-    _note_ += "+--------------------+   |   | ...       |    |    | ...             |\n"
-    _note_ += "|                        |   | ...       |    |    | vm_flags        |\n"
-    _note_ += "|   +-task_struct--+     |   | ...       |    |    | vm_file         |-----+\n"
-    _note_ += "|   | ...          |     |   | pt_regs   |    |    | ...             |     |\n"
-    _note_ += "|   | stack        |-----+   +-----------+    |    +-----------------+     |\n"
-    _note_ += "|   | ...          |                          |                            |\n"
-    _note_ += "+-->| tasks        |-->...               +----+<------------------------+  |\n"
-    _note_ += "    | ...          |                     |                              |  |\n"
-    _note_ += "    | mm           |-->+-mm_struct----+  |  +--->+-maple_node(6.1~)--+  |  |\n"
-    _note_ += "    | ...          |   | mmap (~6.1)  |--+  |    | ...               |  |  |\n"
-    _note_ += "    | pid          |   | ...          |     |    | mr64|ma64|alloc   |  |  |\n"
-    _note_ += "    | tid          |   | mm_mt (6.1~) |     |    |   ...             |  |  |\n"
-    _note_ += "    | ...          |   |   ma_root    |-----+    |   slot[]          |--+  |\n"
-    _note_ += "    | stack_canary |   | ...          |          +-------------------+     |\n"
-    _note_ += "    | ...          |   +--------------+                                    |\n"
-    _note_ += "    | group_leader |                                          +------------+                   +-mount----------+\n"
-    _note_ += "    | ...          |         +-->+-cred--------------+        |                                | ...            |\n"
-    _note_ += "    | thread_group |-->...   |   | ...               |        |                                | mnt_parent     |-->mount\n"
-    _note_ += "    | ...          |         |   | uid, gid          |        |                                | mnt_mountpoint |-->dentry\n"
-    _note_ += "    | cred         |---------+   | suid, sgid        |        |                         +----->| mnt (vfsmount) |\n"
-    _note_ += "    | ...          |             | euid, egid        |        |                         |      |   mnt_root     |-->dentry\n"
-    _note_ += "    | comm[16]     |             | fsuid, fsgid      |        |                         |      |   ...          |\n"
-    _note_ += "    | ...          |             | ..., user_ns, ... |        |                         |      | ...            |\n"
-    _note_ += "    | files        |--+          +-------------------+        |                         |      +----------------+\n"
-    _note_ += "    | ...          |  |                                       |                         |\n"
-    _note_ += "    | nsproxy      |------->+-nsproxy----------------+        |                         | +--->+-dentry-----+\n"
-    _note_ += "    | ...          |  |     | count                  |        |                         | |    | ...        |\n"
-    _note_ += "    | sighand      |-----+  | uts_ns, ipc_ns, mnt_ns |        |                         | |    | d_parent   |-->dentry\n"
-    _note_ += "    | ...          |  |  |  | pid_ns_for_children    |        |                         | |    | ...        |\n"
-    _note_ += "    +--------------+  |  |  | net_ns, time_ns, ...   |        |                         | |    | d_inode    |--+\n"
-    _note_ += "                      |  |  +------------------------+        |                         | |    | d_iname    |  |\n"
-    _note_ += "                      |  |                                    |                         | |    | ...        |  |\n"
-    _note_ += "                      |  +->+-sighand_struct----+             |                         | |    +------------+  |\n"
-    _note_ += "                      |     | ...               |             v                         | |                    |\n"
-    _note_ += "                      |     | action[64]        |             +--->+-file------------+  | | +------------------+\n"
-    _note_ += "+---------------------+     +-------------------+             |    | ...             |  | | |\n"
+    _note_ += "    +-init_task-+\n"
+    _note_ += "    | list_head |---+    +-->+-kstack----------+    +--->+-vm_area_struct--+\n"
+    _note_ += "    +-----------+   |    |   | (thread_info)   |    |    | vm_start        |\n"
+    _note_ += "                    |    |   | STACK_END_MAGIC |    |    | vm_end          |\n"
+    _note_ += "+-------------------+    |   | ...             |    |    | vm_next (~6.1)  |\n"
+    _note_ += "|                        |   | ...             |    |    | ...             |\n"
+    _note_ += "|   +-task_struct---+    |   | ...             |    |    | vm_flags        |\n"
+    _note_ += "|   | (thread_info) |    |   | ...             |    |    | vm_file         |-----+\n"
+    _note_ += "|   | ...           |    |   | pt_regs         |    |    | ...             |     |\n"
+    _note_ += "|   | stack         |----+   +-----------------+    |    +-----------------+     |\n"
+    _note_ += "|   | ...           |                               |                            |\n"
+    _note_ += "+-->| tasks         |-->...               +---------+<------------------------+  |\n"
+    _note_ += "    | ...           |                     |                                   |  |\n"
+    _note_ += "    | mm            |-->+-mm_struct----+  |  +-------->+-maple_node(6.1~)--+  |  |\n"
+    _note_ += "    | ...           |   | mmap (~6.1)  |--+  |         | ...               |  |  |\n"
+    _note_ += "    | pid           |   | ...          |     |         | mr64|ma64|alloc   |  |  |\n"
+    _note_ += "    | tid           |   | mm_mt (6.1~) |     |         |   ...             |  |  |\n"
+    _note_ += "    | ...           |   |   ma_root    |-----+         |   slot[]          |--+  |\n"
+    _note_ += "    | stack_canary  |   | ...          |               +-------------------+     |\n"
+    _note_ += "    | ...           |   +--------------+                                         |\n"
+    _note_ += "    | group_leader  |                                         +------------------+             +-mount----------+\n"
+    _note_ += "    | ...           |         +-->+-cred--------------+       |                                | ...            |\n"
+    _note_ += "    | thread_group  |-->...   |   | ...               |       |                                | mnt_parent     |-->mount\n"
+    _note_ += "    | ...           |         |   | uid, gid          |       |                                | mnt_mountpoint |-->dentry\n"
+    _note_ += "    | cred          |---------+   | suid, sgid        |       |                         +----->| mnt (vfsmount) |\n"
+    _note_ += "    | ...           |             | euid, egid        |       |                         |      |   mnt_root     |-->dentry\n"
+    _note_ += "    | comm[16]      |             | fsuid, fsgid      |       |                         |      |   ...          |\n"
+    _note_ += "    | ...           |             | ..., user_ns, ... |       |                         |      | ...            |\n"
+    _note_ += "    | files         |--+          +-------------------+       |                         |      +----------------+\n"
+    _note_ += "    | ...           |  |                                      |                         |\n"
+    _note_ += "    | nsproxy       |------->+-nsproxy----------------+       |                         | +--->+-dentry-----+\n"
+    _note_ += "    | ...           |  |     | count                  |       |                         | |    | ...        |\n"
+    _note_ += "    | sighand       |-----+  | uts_ns, ipc_ns, mnt_ns |       |                         | |    | d_parent   |-->dentry\n"
+    _note_ += "    | ...           |  |  |  | pid_ns_for_children    |       |                         | |    | ...        |\n"
+    _note_ += "    | seccomp       |  |  |  | net_ns, time_ns, ...   |       |                         | |    | d_inode    |--+\n"
+    _note_ += "    | ...           |  |  |  +------------------------+       |                         | |    | d_iname    |  |\n"
+    _note_ += "    +---------------+  |  |                                   |                         | |    | ...        |  |\n"
+    _note_ += "                       |  +->+-sighand_struct----+            |                         | |    +------------+  |\n"
+    _note_ += "                       |     | ...               |            v                         | |                    |\n"
+    _note_ += "                       |     | action[64]        |            +--->+-file------------+  | | +------------------+\n"
+    _note_ += "+----------------------+     +-------------------+            |    | ...             |  | | |\n"
     _note_ += "|                                                             |    | f_path          |  | | v\n"
     _note_ += "+-->+-files_struct-+  +-->+-fdtable---+  +-->+-file*[]-----+  |    |   mnt           |--+ | +->+-inode------+\n"
     _note_ += "    | ...          |  |   | max_fds   |  |   | [0]         |--+    |   dentry        |----+ |  | ...        |\n"
@@ -52276,6 +54073,7 @@ class KernelTaskCommand(GenericCommand):
         self.offset_sighand = None
         self.offset_nsproxy = None
         self.offset_signal = None
+        self.offset_seccomp = None
         # files_struct
         self.offset_fdt = None
         # kstack
@@ -52301,6 +54099,12 @@ class KernelTaskCommand(GenericCommand):
         # sighand_struct
         self.offset_action = None
         self.sizeof_action = None
+        # seccomp_filter
+        self.offset_prev = None
+        self.offset_prog = None
+        # bpf_prog
+        self.offset_bpf_func = None
+        self.offset_orig_prog = None
         return
 
     def quiet_info(self, msg):
@@ -52319,31 +54123,7 @@ class KernelTaskCommand(GenericCommand):
         # search init_task->tasks
         for i in range(0x200):
             offset_tasks = current_arch.ptrsize * i
-            pos1 = init_task + offset_tasks
-            pos2 = init_task + offset_tasks + current_arch.ptrsize
-            list1 = [pos1]
-            list2 = [pos2]
-            # validating candidate offset
-            while True:
-                # read check
-                if not is_valid_addr(pos1) or not is_valid_addr(pos2):
-                    found = False
-                    break
-                pos1 = read_int_from_memory(pos1)
-                pos2 = read_int_from_memory(pos2) + current_arch.ptrsize
-                # list validate
-                if pos1 in list1[1:] or pos2 in list2[1:]: # incomplete infinity loop detected
-                    found = False
-                    break
-                if (pos1 == list1[0] and len(list1) == 1) or (pos2 == list2[0] and len(list2) == 1): # self reference
-                    found = False
-                    break
-                if (pos1 == list1[0] and len(list1) > 5) and (pos2 == list2[0] and len(list2) > 5): # maybe link list
-                    found = True
-                    break
-                list1.append(pos1)
-                list2.append(pos2)
-            if found:
+            if is_double_link_list(init_task + offset_tasks, min_len=5):
                 return offset_tasks
         return None
 
@@ -52478,6 +54258,71 @@ class KernelTaskCommand(GenericCommand):
             return offset_stack
         return None
 
+    def get_thread_info(self, task_addr, offset_stack):
+        kstack = read_int_from_memory(task_addr + offset_stack)
+        stack_top_val = u32(read_memory(kstack, 4))
+        if stack_top_val == 0x57ac6e9d: # STACK_END_MAGIC
+            """
+            struct task_struct {
+            #ifdef CONFIG_THREAD_INFO_IN_TASK
+                struct thread_info thread_info;
+            #endif
+                ...
+            """
+            return task_addr # CONFIG_THREAD_INFO_IN_TASK=y
+        else:
+            return kstack # CONFIG_THREAD_INFO_IN_TASK=n
+
+    def has_seccomp(self, task_addr):
+        thread_info = self.get_thread_info(task_addr, self.offset_stack)
+        kversion = Kernel.kernel_version()
+        if is_x86():
+            if kversion >= "5.11":
+                syscall_work = read_int_from_memory(thread_info + current_arch.ptrsize)
+                return bool(syscall_work & (1 << 0)) # SYSCALL_WORK_SECCOMP
+            elif kversion >= "4.9":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 8)) # TIF_SECCOMP
+            elif kversion >= "4.1":
+                flags = u32(read_memory(thread_info + current_arch.ptrsize, 4))
+                return bool(flags & (1 << 8)) # TIF_SECCOMP
+            else:
+                flags = u32(read_memory(thread_info + current_arch.ptrsize * 2, 4))
+                return bool(flags & (1 << 8)) # TIF_SECCOMP
+        elif is_arm32():
+            if kversion >= "6.0":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 23)) # TIF_SECCOMP
+            elif kversion >= "5.16":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 7)) # TIF_SECCOMP
+            elif kversion >= "5.15":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 23)) # TIF_SECCOMP
+            elif kversion >= "5.11":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 7)) # TIF_SECCOMP
+            elif kversion >= "5.10":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 23)) # TIF_SECCOMP
+            elif kversion >= "4.3":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 7)) # TIF_SECCOMP
+            elif kversion >= "3.8":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 11)) # TIF_SECCOMP
+            else:
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 21)) # TIF_SECCOMP
+        elif is_arm64():
+            if kversion >= "3.16":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 11)) # TIF_SECCOMP
+            else:
+                # unimplemented
+                return None
+        return None
+
     def get_offset_ptregs(self, task_addrs, offset_stack):
         # calc kstack address pattern
         kstacks_raw = []
@@ -52532,7 +54377,21 @@ class KernelTaskCommand(GenericCommand):
             };
             """
             ptregs_size = current_arch.ptrsize * 21
-            bottom_offset = 0
+
+            # Sometimes register values are stored a short distance away from the bottom of the kstack.
+            # I'm not sure if this depends on the kernel version.
+            # In 6.10.11 it was at offset 0, and in 6.10.0-rc2 it was at offset 16.
+            # For this reason I decided to do it dynamically.
+            # TODO: Perhaps dynamic detection is also necessary for x86, ARM, and ARM64.
+            for i in range(8):
+                init_process_kstack = read_int_from_memory(task_addrs[1] + offset_stack)
+                init_process_kstack_end = init_process_kstack + kstack_size
+                v = read_int_from_memory(init_process_kstack_end - current_arch.ptrsize * (i + 1))
+                if v == 0x2b: # ss segment default value
+                    bottom_offset = current_arch.ptrsize * i
+                    break
+            else:
+                bottom_offset = 0
         elif is_x86_32():
             """
             struct pt_regs {
@@ -52775,6 +54634,198 @@ class KernelTaskCommand(GenericCommand):
         };
         """
         return offset_nsproxy + current_arch.ptrsize
+
+    def get_offset_seccomp(self, task_addrs, offset_signal):
+        """
+        struct task_struct {
+            ...
+            struct signal_struct *signal;
+            struct sighand_struct __rcu *sighand;
+            sigset_t blocked;
+            sigset_t real_blocked;
+            sigset_t saved_sigmask;
+            struct sigpending {
+                struct list_head list;
+                sigset_t signal;
+            } pending;
+            unsigned long sas_ss_sp;
+            size_t sas_ss_size;
+            unsigned int sas_ss_flags;
+            struct callback_head *task_works;
+        #ifdef CONFIG_AUDIT
+        #ifdef CONFIG_AUDITSYSCALL
+            struct audit_context *audit_context;
+        #endif
+            kuid_t loginuid;
+            unsigned int sessionid;
+        #endif
+            struct seccomp {
+                int mode;
+                atomic_t filter_count;
+                struct seccomp_filter *filter;
+            } seccomp;
+            ...
+        }
+        """
+
+        # search seccomped process
+        for task in task_addrs:
+            if self.has_seccomp(task):
+                seccomped_task = task
+                break
+        else:
+            # Not found
+            return None
+
+        """
+        0xffff99353fe721d8|+0x0000|+000: 0xffff99353fe6e600 <- &task_struct.signal
+        0xffff99353fe721e0|+0x0008|+001: 0x0000000000004002
+        0xffff99353fe721e8|+0x0010|+002: 0x0000000000000000
+        0xffff99353fe721f0|+0x0018|+003: 0x0000000000000000
+        0xffff99353fe721f8|+0x0020|+004: 0xffff99353fe721f8 <- &task_struct.pending.list
+        0xffff99353fe72200|+0x0028|+005: 0xffff99353fe721f8
+        0xffff99353fe72208|+0x0030|+006: 0x0000000000000000
+        0xffff99353fe72210|+0x0038|+007: 0x0000000000000000
+        0xffff99353fe72218|+0x0040|+008: 0x0000000000000000
+        0xffff99353fe72220|+0x0048|+009: 0x0000000000000002
+        0xffff99353fe72228|+0x0050|+010: 0x0000000000000000
+        0xffff99353fe72230|+0x0058|+011: 0x0000000000000000
+        0xffff99353fe72238|+0x0060|+012: 0xffffffffffffffff
+        0xffff99353fe72240|+0x0068|+013: 0x0000002300000002 <- &task_struct.seccomp
+        0xffff99353fe72248|+0x0070|+014: 0xffff9934c39e2300 <- &task_struct.seccomp.filter
+        0xffff99353fe72250|+0x0078|+015: 0x0000000000000003
+        0xffff99353fe72258|+0x0080|+016: 0x0000000000000004
+        """
+        # search sigpending
+        base = offset_signal + current_arch.ptrsize
+        for i in range(0x100):
+            if is_double_link_list(seccomped_task + base + current_arch.ptrsize * i):
+                base += current_arch.ptrsize * i * 2
+                break
+        else:
+            # Not found sigpending
+            return None
+
+        # search seccomp
+        for i in range(0x100):
+            offset_filter = base + current_arch.ptrsize * i
+
+            filt = read_int_from_memory(seccomped_task + offset_filter)
+            if not is_valid_addr(filt):
+                continue
+
+            mode = u32(read_memory(seccomped_task + offset_filter - 4, 4))
+            filtcnt = u32(read_memory(seccomped_task + offset_filter - 4 * 2, 4))
+
+            """
+            #define SECCOMP_MODE_DISABLED 0
+            #define SECCOMP_MODE_STRICT   1
+            #define SECCOMP_MODE_FILTER   2
+            """
+            if mode == 0 or filtcnt == 0:
+                continue
+            offset_seccomp = offset_filter - 4 * 2
+            return offset_seccomp
+
+        return None
+
+    def get_offset_prev(self, task_addrs, offset_seccomp):
+        if offset_seccomp is None:
+            return None
+
+        """
+        struct seccomp_filter {
+            refcount_t refs; // 5.9~
+            refcount_t users; // 5.9~
+            refcount_t usage; // ~5.9
+            bool log; // 4.14~
+            bool wait_killable_recv; // 5.19~
+            struct action_cache cache; // 5.11~
+            struct seccomp_filter *prev;
+            struct bpf_prog *prog;
+            ...
+        """
+
+        for task in task_addrs:
+            if not self.has_seccomp(task):
+                continue
+
+            mode = u32(read_memory(task + self.offset_seccomp, 4))
+            if mode != 2: # SECCOMP_MODE_FILTER
+                continue
+
+            filter_count = u32(read_memory(task + self.offset_seccomp + 4, 4))
+            if filter_count == 0:
+                continue # something is wrong
+
+            filter_ = read_int_from_memory(task + self.offset_seccomp + 4 + 4)
+            for i in range(0x100):
+                # prev
+                x = read_int_from_memory(filter_ + current_arch.ptrsize * i)
+                if (x & 0x7) or not is_valid_addr(x): # must aligned
+                    continue
+                # prog
+                y = read_int_from_memory(filter_ + current_arch.ptrsize * (i + 1))
+                if (y & 0x7) or not is_valid_addr(y): # must aligned
+                    continue
+
+                if filter_count == 1:
+                    return current_arch.ptrsize * (i - 1) # prev is NULL
+                else:
+                    return current_arch.ptrsize * i # prev is non-NULL
+        return None
+
+    def get_offset_prog(self, offset_prev):
+        if offset_prev is None:
+            return None
+
+        kversion = Kernel.kernel_version()
+        if kversion < "3.16":
+            return None
+
+        return offset_prev + current_arch.ptrsize
+
+    def get_offset_bpf_func(self, task_addrs, offset_seccomp, offset_prog):
+        if offset_seccomp is None:
+            return None
+        if offset_prog is None:
+            return None
+
+        def is_executable(x):
+            maps = Kernel.get_maps()
+            for start, size, perm in maps:
+                if start <= x and x < start + size:
+                    return perm.endswith("X")
+            return False
+
+        for task in task_addrs:
+            if not self.has_seccomp(task):
+                continue
+
+            filter_ = read_int_from_memory(task + offset_seccomp + 4 + 4)
+            bpf_prog = read_int_from_memory(filter_ + offset_prog)
+            for i in range(0x100):
+                x = read_int_from_memory(bpf_prog + current_arch.ptrsize * i)
+                if is_valid_addr(x) and is_executable(x):
+                    if read_int_from_memory(x) == 0: # something is wrong
+                        continue
+                    return current_arch.ptrsize * i
+        return None
+
+    def get_offset_orig_prog(self, offset_bpf_func):
+        if offset_bpf_func is None:
+            return None
+
+        kversion = Kernel.kernel_version()
+        if kversion >= "5.12":
+            return offset_bpf_func + current_arch.ptrsize * 2
+        elif kversion >= "4.1":
+            return offset_bpf_func - current_arch.ptrsize
+        elif kversion >= "3.18":
+            return offset_bpf_func - current_arch.ptrsize * 2
+        elif kversion >= "3.16":
+            return offset_bpf_func - current_arch.ptrsize
+        return None
 
     def get_offset_thread_head(self, task_addr, offset_signal):
         """
@@ -54075,7 +56126,7 @@ class KernelTaskCommand(GenericCommand):
             self.quiet_info("offsetof(inode, i_ino): {:#x}".format(self.offset_i_ino))
 
         # task_struct->files
-        if args.print_fd or args.print_sighand or args.print_namespace or (kversion >= "6.7" and args.print_thread):
+        if args.print_fd or args.print_sighand or args.print_namespace or (kversion >= "6.7" and args.print_thread) or args.print_seccomp:
             if self.offset_files is None:
                 self.offset_files = self.get_offset_files(task_addrs, self.offset_comm)
             if self.offset_files is None:
@@ -54094,7 +56145,7 @@ class KernelTaskCommand(GenericCommand):
 
         # cred->user_ns
         # task_struct->nsproxy
-        if args.print_namespace or (kversion >= "6.7" and args.print_thread):
+        if args.print_namespace or (kversion >= "6.7" and args.print_thread) or args.print_seccomp:
             if self.offset_user_ns is None:
                 init_cred = read_int_from_memory(task_addrs[0] + self.offset_cred)
                 self.offset_user_ns = self.get_offset_user_ns(init_cred, self.offset_uid)
@@ -54130,6 +56181,7 @@ class KernelTaskCommand(GenericCommand):
                 if self.offset_signal is None:
                     self.offset_signal = self.get_offset_signal(self.offset_nsproxy)
                 self.quiet_info("offsetof(task_struct, signal): {:#x}".format(self.offset_signal))
+
                 if self.offset_thread_head is None:
                     self.offset_thread_head = self.get_offset_thread_head(task_addrs[0], self.offset_signal)
                 self.quiet_info("offsetof(signal, thread_head): {:#x}".format(self.offset_thread_head))
@@ -54146,16 +56198,16 @@ class KernelTaskCommand(GenericCommand):
             if self.offset_action is None:
                 sighand = read_int_from_memory(task_addrs[1] + self.offset_sighand)
                 self.offset_action = self.get_offset_action(sighand)
-                if self.offset_action is None:
-                    self.quiet_err("Not found sighand_struct->action")
-                    return False
-                self.quiet_info("offsetof(sighand_struct, action): {:#x}".format(self.offset_action))
+            if self.offset_action is None:
+                self.quiet_err("Not found sighand_struct->action")
+                return False
+            self.quiet_info("offsetof(sighand_struct, action): {:#x}".format(self.offset_action))
 
             if self.sizeof_action is None:
                 self.sizeof_action = self.get_sizeof_action(task_addrs, self.offset_sighand, self.offset_action, self.offset_mm)
-                if self.sizeof_action is None:
-                    self.quiet_err("Not found sizeof(action[0])")
-                    return False
+            if self.sizeof_action is None:
+                self.quiet_err("Not found sizeof(action[0])")
+                return False
             self.quiet_info("sizeof(action[0]): {:#x}".format(self.sizeof_action))
 
             self.signame_list = {
@@ -54202,6 +56254,57 @@ class KernelTaskCommand(GenericCommand):
             for i in range(63, 49, -1):
                 self.signame_list[i] = "SIGRTMAX-{:d}".format(64 - i)
 
+        # task_struct->seccomp
+        if args.print_seccomp:
+            if self.offset_signal is None:
+                self.offset_signal = self.get_offset_signal(self.offset_nsproxy)
+            self.quiet_info("offsetof(task_struct, signal): {:#x}".format(self.offset_signal))
+
+            if self.offset_seccomp is None:
+                self.offset_seccomp = self.get_offset_seccomp(task_addrs, self.offset_signal)
+            if self.offset_seccomp is None:
+                self.quiet_err("Not found task_struct->seccomp")
+                return False
+            self.quiet_info("offsetof(task_struct, seccomp): {:#x}".format(self.offset_seccomp))
+
+            if self.offset_prev is None:
+                self.offset_prev = self.get_offset_prev(task_addrs, self.offset_seccomp)
+            if self.offset_prev is None:
+                self.quiet_err("Not found seccomp_filter->prev")
+                return False
+            self.quiet_info("offsetof(seccomp_filter, prev): {:#x}".format(self.offset_prev))
+
+            if self.offset_prog is None:
+                self.offset_prog = self.get_offset_prog(self.offset_prev)
+            if self.offset_prog is None:
+                self.quiet_err("Not found seccomp_filter->prog")
+                return False
+            self.quiet_info("offsetof(seccomp_filter, prog): {:#x}".format(self.offset_prog))
+
+            if self.offset_bpf_func is None:
+                self.offset_bpf_func = self.get_offset_bpf_func(task_addrs, self.offset_seccomp, self.offset_prog)
+            if self.offset_bpf_func is None:
+                self.quiet_err("Not found bpf_prog->bpf_func")
+                return False
+            self.quiet_info("offsetof(bpf_prog, bpf_func): {:#x}".format(self.offset_bpf_func))
+
+            if self.offset_orig_prog is None:
+                self.offset_orig_prog = self.get_offset_orig_prog(self.offset_bpf_func)
+            if self.offset_orig_prog is None:
+                self.quiet_err("Not found bpf_prog->orig_prog")
+                return False
+            self.quiet_info("offsetof(bpf_prog: orig_prog): {:#x}".format(self.offset_orig_prog))
+
+            try:
+                self.seccomp_tools_command = GefUtil.which("seccomp-tools")
+                self.quiet_info("seccomp-tools is found")
+                if is_arm32():
+                    if not self.quiet:
+                        warn("seccomp-tools is unsupported on arm32")
+            except FileNotFoundError:
+                self.quiet_info("seccomp-tools is not found, use `capstone-disable bpf_func`")
+                self.seccomp_tools_command = None
+
         return task_addrs
 
     def dump(self, args, task_addrs):
@@ -54212,7 +56315,7 @@ class KernelTaskCommand(GenericCommand):
         # print legend
         out = []
         if not self.quiet:
-            fmt = "{:<18s} {:3s} {:<7s} {:<16s} {:<18s} [{:s}] {:<18s} {:<18s}"
+            fmt = "{:<18s} {:3s} {:<7s} {:<16s} {:<18s} [{:s}] {:<8s} {:<18s} {:<18s}"
             if args.print_all_id:
                 ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
                 uids_fmt = "{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}"
@@ -54220,7 +56323,7 @@ class KernelTaskCommand(GenericCommand):
                 ids_str = ["uid", "gid"]
                 uids_fmt = "{:>5s} {:>5s}"
             uids_str = uids_fmt.format(*ids_str)
-            legend = ["task", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "kstack", "kcanary"]
+            legend = ["task", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "seccomp", "kstack", "kcanary"]
             out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         if args.print_namespace:
@@ -54280,26 +56383,35 @@ class KernelTaskCommand(GenericCommand):
             else:
                 kcanary = "None"
 
+            # seccomp
+            if self.has_seccomp(task):
+                seccomp = "Enabled"
+            else:
+                seccomp = "Disabled"
+
             # make output
-            fmt = "{:#018x} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:#018x} {:<18s}"
-            out.append(fmt.format(task, proctype, pid, comm_string, cred, uids_str, kstack, kcanary))
+            out.append("{:#018x} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:<8s} {:#018x} {:<18s}".format(
+                task, proctype, pid, comm_string, cred, uids_str, seccomp, kstack, kcanary,
+            ))
 
             # skip additional information when swapper/N
             if pid == 0:
                 continue
 
+            additional = False
+
             # additional information (maps)
             if args.print_maps:
+                additional = True
                 mms = self.get_mm(task, self.offset_mm)
                 if mms:
                     out.append(titlify("memory map of `{:s}`".format(comm_string)))
                     for mm in mms:
                         out.append("{:#018x}-{:#018x} {:s} {:s}".format(mm.start, mm.end, mm.flags, mm.file))
-                    if not args.print_regs:
-                        out.append(titlify(""))
 
             # additional information (regs)
-            if args.print_regs:
+            if proctype == "U" and args.print_regs:
+                additional = True
                 regs = self.get_regs(kstack, self.offset_ptregs)
                 syscall_table = get_syscall_table().table
                 syscall_nr_regs = ["orig_rax", "orig_eax", "r7", "x8"]
@@ -54315,11 +56427,10 @@ class KernelTaskCommand(GenericCommand):
                             out.append("{:16s}: {:s}".format(
                                 k, AddressUtil.format_address(v, long_fmt=True,
                             )))
-                    if not args.print_fd:
-                        out.append(titlify(""))
 
             # additional information (files)
             if proctype == "U" and args.print_fd:
+                additional = True
                 out.append(titlify("file descriptors of `{:s}`".format(comm_string)))
                 fmt = "{:3s} {:18s} {:18s} {:18s} {:s}"
                 legend = ["fd", "struct file", "struct dentry", "struct inode", "path"]
@@ -54338,11 +56449,10 @@ class KernelTaskCommand(GenericCommand):
                         inode = read_int_from_memory(dentry + self.offset_d_inode)
                         filepath = self.get_filepath(file)
                         out.append("{:<3d} {:#018x} {:#018x} {:#018x} {:s}".format(i, file, dentry, inode, filepath))
-                    if not args.print_sighand:
-                        out.append(titlify(""))
 
             # additional information (sighands)
             if proctype == "U" and args.print_sighand:
+                additional = True
                 out.append(titlify("sighandlers of `{:s}`".format(comm_string)))
                 fmt = "{:14s} {:18s} {:18s} {:18s}"
                 legend = ["sig", "sigaction", "handler", "flags"]
@@ -54363,11 +56473,10 @@ class KernelTaskCommand(GenericCommand):
                         handler = "{:#018x}".format(handler)
                     flags = read_int_from_memory(sigaction + current_arch.ptrsize * 1)
                     out.append("{:<2d} {:11s} {:#018x} {:18s} {:#018x}".format(i + 1, signame, sigaction, handler, flags))
-                if not args.print_namespace:
-                    out.append(titlify(""))
 
             # additional information (namespace)
             if proctype == "U" and args.print_namespace:
+                additional = True
                 out.append(titlify("namespace of `{:s}`".format(comm_string)))
                 fmt = "{:30s} {:18s} {:8s}"
                 legend = ["name", "value", "init_ns?"]
@@ -54389,6 +56498,59 @@ class KernelTaskCommand(GenericCommand):
                         init_value = read_int_from_memory(init_nsproxy + current_arch.ptrsize * i)
                         is_init_ns = str(value == init_value)
                     out.append("{:30s} {:#018x} {:8s}".format("nsproxy->" + name, value, is_init_ns))
+
+            # additional information (seccomp)
+            if proctype == "U" and args.print_seccomp:
+                if self.has_seccomp(task):
+                    additional = True
+                    out.append(titlify("seccomp of `{:s}`".format(comm_string)))
+                    fmt = "{:18s} {:25s} {:12s} {:18s}"
+                    legend = ["&task.seccomp", "mode", "filter_count", "filter"]
+                    out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+                    seccomp = task + self.offset_seccomp
+                    mode = u32(read_memory(seccomp, 4))
+                    mode_define = {
+                        0: "SECCOMP_MODE_DISABLED",
+                        1: "SECCOMP_MODE_STRICT",
+                        2: "SECCOMP_MODE_FILTER",
+                    }.get(mode, "UNKNOWN")
+                    mode_str = "{:d} ({:s})".format(mode, mode_define)
+                    filter_count = u32(read_memory(seccomp + 4, 4))
+                    filter_current = read_int_from_memory(seccomp + 4 * 2)
+                    out.append("{:#018x} {:25s} {:<12d} {:#018x}".format(seccomp, mode_str, filter_count, filter_current))
+
+                    i = 1
+                    while filter_current and i <= filter_count:
+                        prog = read_int_from_memory(filter_current + self.offset_prog)
+                        filter_prev = read_int_from_memory(filter_current + self.offset_prev)
+                        bpf_func = read_int_from_memory(prog + self.offset_bpf_func)
+                        orig_prog = read_int_from_memory(prog + self.offset_orig_prog)
+
+                        out.append("")
+                        out.append("[{:d}/{:d}] filter:{:#x} prev:{:#x} bpf_func:{:#x} orig_prog:{:#x}".format(
+                            i, filter_count, filter_current, filter_prev, bpf_func, orig_prog,
+                        ))
+
+                        if self.seccomp_tools_command:
+                            cnt = read_int_from_memory(orig_prog) & 0xffff
+                            prog = read_int_from_memory(orig_prog + current_arch.ptrsize)
+                            data = read_memory(prog, cnt * 8)
+                            tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="ktask_")
+                            os.fdopen(tmp_fd, "wb").write(data)
+                            ret = GefUtil.gef_execute_external([self.seccomp_tools_command, "disasm", tmp_path], as_list=True)
+                            out.extend(ret)
+                            os.unlink(tmp_path)
+                        else:
+                            ret = gdb.execute("capstone-disassemble {:#x}".format(bpf_func), to_string=True).rstrip()
+                            out.append(ret)
+                            out.append("      ...")
+
+                        filter_current = filter_prev
+                        i += 1
+
+            # print separator
+            if additional:
                 out.append(titlify(""))
         return out
 
@@ -54420,6 +56582,7 @@ class KernelTaskCommand(GenericCommand):
 @register_command
 class KernelFilesCommand(GenericCommand):
     """Display open files list of each process (shortcut for `ktask -quF`)."""
+
     _cmdline_ = "kfiles"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -54445,6 +56608,7 @@ class KernelFilesCommand(GenericCommand):
 @register_command
 class KernelSavedRegsCommand(GenericCommand):
     """Display saved registers of each process (shortcut for `ktask -qur`)."""
+
     _cmdline_ = "kregs"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -54470,6 +56634,7 @@ class KernelSavedRegsCommand(GenericCommand):
 @register_command
 class KernelSignalsCommand(GenericCommand):
     """Display signal handlers of each process (shortcut for `ktask -qus`)."""
+
     _cmdline_ = "ksighands"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -54495,6 +56660,7 @@ class KernelSignalsCommand(GenericCommand):
 @register_command
 class KernelNamespacesCommand(GenericCommand):
     """Display namespaces of each process (shortcut for `ktask -quN`)."""
+
     _cmdline_ = "knamespaces"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -54518,17 +56684,50 @@ class KernelNamespacesCommand(GenericCommand):
 
 
 @register_command
+class KernelLoadCommand(GenericCommand):
+    """Load vmlinux without loaded address."""
+
+    _cmdline_ = "kload"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("path", metavar="VMLINUX_PATH", type=str, help="path of the vmlinux.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    def do_invoke(self, args):
+        if not os.path.exists(args.path):
+            err("Invalid path")
+            return
+
+        info("Wait for memory scan")
+        kinfo = Kernel.get_kernel_base()
+        if kinfo.text_base is None:
+            err("kernel base is unknown")
+            return
+
+        gdb.execute("add-symbol-file {!r} {:#x}".format(args.path, kinfo.text_base))
+        return
+
+
+@register_command
 class KernelModuleCommand(GenericCommand):
     """Display kernel module list."""
+
     _cmdline_ = "kmod"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-s", "--resolve-symbol", action="store_true", help="try to resolve symbols.")
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument("-s", "--resolve-symbol", action="store_true", help="try to resolve symbols.")
+    group.add_argument("-a", "--apply-symbol", action="store_true",
+                        help="try to apply symbol in the form 'module_name.symbol'.")
     parser.add_argument("--symbol-unsort", action="store_true",
                         help="print resolved symbols without sorting by address.")
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
@@ -54536,7 +56735,7 @@ class KernelModuleCommand(GenericCommand):
 
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
-    _note_ += "Simplified clocksource structure:\n"
+    _note_ += "Simplified module structure:\n"
     _note_ += "\n"
     _note_ += "                   +-module------------------+\n"
     _note_ += "+-modules-----+    | ...                     |\n"
@@ -54562,7 +56761,13 @@ class KernelModuleCommand(GenericCommand):
     _note_ += "                   | ...                     |  |   | num_symtab     |\n"
     _note_ += "                   | kallsyms                |--+   | strtab         |\n"
     _note_ += "                   | ...                     |      | typetab (v5.2~)|\n"
-    _note_ += "                   +-------------------------+      +----------------+"
+    _note_ += "                   +-------------------------+      +----------------+\n"
+    _note_ += "\n"
+    _note_ += "Notes for -a option:\n"
+    _note_ += "- You can check the added symbols with the `symbols` command.\n"
+    _note_ += "- Added symbols are in the format `module_name.symbol` to avoid collisions.\n"
+    _note_ += "  When used from the command line, they must be enclosed in single quotes.\n"
+    _note_ += "  e.g. `p 'virtio_net.__this_module'`"
 
     def get_modules_list(self):
         modules = KernelAddressHeuristicFinder.get_modules()
@@ -54654,7 +56859,7 @@ class KernelModuleCommand(GenericCommand):
             unsigned int num_exentries;
             struct exception_table_entry *extable;
             int (*init)(void);
-            struct module_memory mem[MOD_MEM_NUM_TYPES] __module_memory_align;
+            struct module_memory mem[MOD_MEM_NUM_TYPES] __module_memory_align;    <-- here
             struct mod_arch_specific arch;
             unsigned long taints;
         #ifdef CONFIG_GENERIC_BUG
@@ -54693,24 +56898,25 @@ class KernelModuleCommand(GenericCommand):
                 valid = True
                 for module in module_addrs:
                     for mem_type in (MOD_TEXT, MOD_DATA, MOD_RODATA):
+                        mem_ptr = module + offset_mem + mem_type * sizeof_module_memory
                         # memory access check
-                        if not is_valid_addr(module + offset_mem + mem_type * sizeof_module_memory):
+                        if not is_valid_addr(mem_ptr):
                             valid = False
                             break
                         # base align check
-                        cand_base = read_int_from_memory(module + offset_mem + mem_type * sizeof_module_memory)
+                        cand_base = read_int_from_memory(mem_ptr)
                         if cand_base == 0 or cand_base & 0xfff:
                             valid = False
                             break
                         # size check
-                        cand_size = u32(read_memory(module + offset_mem + mem_type * sizeof_module_memory + current_arch.ptrsize + 4 * 0, 4))
+                        cand_size = u32(read_memory(mem_ptr + current_arch.ptrsize, 4))
                         if cand_size == 0 or cand_size > 0x100000:
                             valid = False
                             break
                 if valid:
                     if not self.quiet:
-                        info(f"offsetof(module, mem): {offset_mem:#x}")
-                        info(f"sizeof(module_memory): {sizeof_module_memory:#x}")
+                        info("offsetof(module, mem): {:#x}".format(offset_mem))
+                        info("sizeof(module_memory): {:#x}".format(sizeof_module_memory))
                     return offset_mem
         if not self.quiet:
             err("Not found module->mem")
@@ -54753,7 +56959,7 @@ class KernelModuleCommand(GenericCommand):
             struct exception_table_entry *extable;
             int (*init)(void);
             struct module_layout core_layout __module_layout_align;
-            struct module_layout init_layout;
+            struct module_layout init_layout;                                     <-- here
         #ifdef CONFIG_ARCH_WANTS_MODULES_DATA_IN_VMALLOC
             struct module_layout data_layout;
         #endif
@@ -54810,42 +57016,43 @@ class KernelModuleCommand(GenericCommand):
             0xbf22b184:     0x00008000      0x00005000      0x00006000      0x00006000
         """
         for i in range(300):
-            offset_layout = i * current_arch.ptrsize
+            offset_init_layout = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
                 # memory access check
-                if not is_valid_addr(module + offset_layout):
+                init_layout_ptr = module + offset_init_layout
+                if not is_valid_addr(init_layout_ptr):
                     valid = False
                     break
                 # base align check
-                cand_base = read_int_from_memory(module + offset_layout)
+                cand_base = read_int_from_memory(init_layout_ptr)
                 if cand_base == 0 or cand_base & 0xfff:
                     valid = False
                     break
                 # size check
-                cand_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 0, 4))
+                cand_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize, 4))
                 if cand_size == 0 or cand_size > 0x200000:
                     valid = False
                     break
                 # text_size check
-                cand_text_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 1, 4))
+                cand_text_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize + 4 * 1, 4))
                 if cand_text_size == 0 or cand_text_size > 0x200000:
                     valid = False
                     break
                 # ro_size check
-                cand_ro_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 2, 4))
+                cand_ro_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize + 4 * 2, 4))
                 if cand_ro_size == 0 or cand_ro_size > 0x200000:
                     valid = False
                     break
                 # ro_after_init_size check
-                cand_ro_after_init_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 3, 4))
+                cand_ro_after_init_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize + 4 * 3, 4))
                 if cand_ro_after_init_size == 0 or cand_ro_after_init_size > 0x200000:
                     valid = False
                     break
             if valid:
                 if not self.quiet:
-                    info("offsetof(module, init_layout): {:#x}".format(offset_layout))
-                return offset_layout
+                    info("offsetof(module, init_layout): {:#x}".format(offset_init_layout))
+                return offset_init_layout
 
         if not self.quiet:
             err("Not found module->init_layout")
@@ -54893,7 +57100,7 @@ class KernelModuleCommand(GenericCommand):
             int (*init)(void);
             void *module_init ____cacheline_aligned;
             /* Here is the actual code + data, vfree'd on unload. */
-            void *module_core;
+            void *module_core;                                                    <-- here
             /* Here are the sizes of the init and core sections */
             unsigned int init_size, core_size;
             /* The size of the executable code in each section. */
@@ -54911,7 +57118,7 @@ class KernelModuleCommand(GenericCommand):
             struct bug_entry *bug_table;
         #endif
         #ifdef CONFIG_KALLSYMS
-            struct mod_kallsyms *kallsyms;
+            struct mod_kallsyms *kallsyms;                                        <-- here
             struct mod_kallsyms core_kallsyms;
             struct module_sect_attrs *sect_attrs;
             struct module_notes_attrs *notes_attrs;
@@ -54923,32 +57130,33 @@ class KernelModuleCommand(GenericCommand):
             offset_module_core = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
+                module_core_ptr = module + offset_module_core
                 # memory access check
-                if not is_valid_addr(module + offset_module_core):
+                if not is_valid_addr(module_core_ptr):
                     valid = False
                     break
                 # module_core align check
-                cand_module_core = read_int_from_memory(module + offset_module_core)
+                cand_module_core = read_int_from_memory(module_core_ptr)
                 if cand_module_core == 0 or cand_module_core & 0xfff:
                     valid = False
                     break
                 # init_size check
-                cand_init_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 0, 4))
+                cand_init_size = u32(read_memory(module_core_ptr + current_arch.ptrsize, 4))
                 if cand_init_size > 0x100000:
                     valid = False
                     break
                 # core_size check
-                cand_core_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 1, 4))
+                cand_core_size = u32(read_memory(module_core_ptr + current_arch.ptrsize + 4 * 1, 4))
                 if cand_core_size == 0 or cand_core_size > 0x100000:
                     valid = False
                     break
                 # init_text_size check
-                cand_init_text_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 2, 4))
+                cand_init_text_size = u32(read_memory(module_core_ptr + current_arch.ptrsize + 4 * 2, 4))
                 if cand_init_text_size > 0x100000:
                     valid = False
                     break
                 # core_text_size check
-                cand_core_text_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 3, 4))
+                cand_core_text_size = u32(read_memory(module_core_ptr + current_arch.ptrsize + 4 * 3, 4))
                 if cand_core_text_size == 0 or cand_core_text_size > 0x100000:
                     valid = False
                     break
@@ -54975,12 +57183,13 @@ class KernelModuleCommand(GenericCommand):
             offset_kallsyms = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
+                kallsyms_ptr = module + offset_kallsyms
                 # access check
-                if not is_valid_addr(module + offset_kallsyms):
+                if not is_valid_addr(kallsyms_ptr):
                     valid = False
                     break
                 # kallsyms access check
-                cand_kallsyms = read_int_from_memory(module + offset_kallsyms)
+                cand_kallsyms = read_int_from_memory(kallsyms_ptr)
                 if not is_valid_addr(cand_kallsyms):
                     valid = False
                     break
@@ -55052,6 +57261,73 @@ class KernelModuleCommand(GenericCommand):
             entries.append([sym_addr, sym_type, sym_name])
         return entries
 
+    def print_symbol(self, entries, symbol_unsort):
+        self.out.append(titlify("module symbols"))
+        # symbol_unsort is used for debugging.
+        if not symbol_unsort:
+            entries = sorted(entries)
+        # add output
+        for sym_addr, sym_type, sym_name in entries:
+            self.out.append("{:#018x} {:s} {:s}".format(sym_addr, sym_type, sym_name))
+        self.out.append(titlify(""))
+        return
+
+    def apply_symbol(self, module_name, text_base, entries):
+        # remove old file
+        sym_elf_path = os.path.join(GEF_TEMP_DIR, "kmod-{:s}.elf".format(module_name))
+        if os.path.exists(sym_elf_path):
+            os.unlink(sym_elf_path)
+
+        # make blank elf
+        text_base &= gef_getpagesize_mask_high()
+        text_end = entries[-1][0]
+        blank_elf = AddSymbolTemporaryCommand.create_blank_elf(text_base, text_end)
+        if blank_elf is None:
+            if not self.quiet:
+                err("Failed to create blank elf")
+            return
+
+        # create command
+        cmd_string_arr = []
+        for sym_addr, sym_type, sym_name in entries:
+            if sym_addr < text_base:
+                continue
+
+            if sym_type in ["T", "t", "W", None]:
+                type_flag = "function"
+            else:
+                type_flag = "object"
+            if sym_type and sym_type in "abcdefghijklmnopqrstuvwxyz":
+                global_flag = "local"
+            else:
+                global_flag = "global"
+
+            # higher address needs relative
+            relative_addr = sym_addr - text_base
+            cmd_string_arr.append("--add-symbol")
+            cmd_string_arr.append("{:s}.{:s}=.text:{:#x},{:s},{:s}".format(
+                # modules often contain the same symbols, such as "__this_module".
+                # to avoid collisions, register them in the form "module_name.symbol".
+                module_name, sym_name, relative_addr, global_flag, type_flag,
+            ))
+
+        # embedding symbols
+        objcopy = GefUtil.which("objcopy")
+        processed_count = 0
+        for cmd_string_arr_sliced in slicer(cmd_string_arr, 10000 * 2):
+            subprocess.check_output([objcopy] + cmd_string_arr_sliced + [blank_elf])
+            processed_count += len(cmd_string_arr_sliced) // 2
+        if not self.quiet:
+            info("{:s}: {:d} entries were processed".format(module_name, processed_count))
+        os.rename(blank_elf, sym_elf_path)
+
+        # apply
+        cmd = "add-symbol-file {!r} {:#x}".format(sym_elf_path, text_base)
+        if not self.quiet:
+            warn("Execute `{:s}`".format(cmd))
+        gdb.execute(cmd, to_string=True)
+        return
+
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
@@ -55085,18 +57361,20 @@ class KernelModuleCommand(GenericCommand):
             if offset_module_core is None:
                 return
 
-        if args.resolve_symbol:
+        if args.resolve_symbol or args.apply_symbol:
             offset_kallsyms = self.get_offset_kallsyms(module_addrs)
             if offset_kallsyms is None:
                 return
 
         self.out = []
-        if not self.quiet:
-            fmt = "{:<18s} {:<24s} {:<18s} {:<18s}"
-            legend = ["module", "module->name", "base", "size"]
-            self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
-        tqdm = GefUtil.get_tqdm(not args.quiet)
+        if not args.apply_symbol:
+            if not self.quiet:
+                fmt = "{:<18s} {:<24s} {:<18s} {:<18s}"
+                legend = ["module", "module->name", "base", "size"]
+                self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+        tqdm = GefUtil.get_tqdm(not args.quiet and not args.apply_symbol)
         for module in tqdm(module_addrs, leave=False):
             name_string = read_cstring_from_memory(module + offset_name)
             if args.filter:
@@ -55112,21 +57390,19 @@ class KernelModuleCommand(GenericCommand):
             else: # ~ 4.5
                 base = read_int_from_memory(module + offset_module_core)
                 size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
-            self.out.append("{:#018x} {:<24s} {:#018x} {:#018x}".format(module, name_string, base, size))
+
+            if not args.apply_symbol:
+                self.out.append("{:#018x} {:<24s} {:#018x} {:#018x}".format(module, name_string, base, size))
 
             if args.resolve_symbol:
-                self.out.append(titlify("module symbols"))
                 kallsyms = read_int_from_memory(module + offset_kallsyms)
                 entries = self.parse_kallsyms(kallsyms)
+                self.print_symbol(entries, args.symbol_unsort)
 
-                # symbol_unsort is used for debugging.
-                if not args.symbol_unsort:
-                    entries = sorted(entries)
-
-                for sym_addr, sym_type, sym_name in entries:
-                    self.out.append("{:#018x} {:s} {:s}".format(sym_addr, sym_type, sym_name))
-
-                self.out.append(titlify(""))
+            elif args.apply_symbol:
+                kallsyms = read_int_from_memory(module + offset_kallsyms)
+                entries = self.parse_kallsyms(kallsyms)
+                self.apply_symbol(name_string, base, entries)
 
         if self.out:
             if len(self.out) > GefUtil.get_terminal_size()[0]:
@@ -55137,8 +57413,241 @@ class KernelModuleCommand(GenericCommand):
 
 
 @register_command
+class KernelModuleLoadCommand(GenericCommand):
+    """Load kernel module without loaded address."""
+
+    _cmdline_ = "kmod-load"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("name", type=str, help="name of the loaded module to search by `kmod`.")
+    parser.add_argument("path", type=str, help="path to compiled kernel module.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} sample /path/to/sample.ko".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "It is useful if you have a kernel module with debuginfo at hand."
+
+    def get_modules_list(self):
+        modules = KernelAddressHeuristicFinder.get_modules()
+        if modules is None:
+            if not self.quiet:
+                err("Not found modules (maybe, CONFIG_MODULES is not set)")
+            return None
+
+        if not self.quiet:
+            info("modules: {:#x}".format(modules))
+
+        module_addrs = []
+        current = modules
+        while True:
+            try:
+                addr = read_int_from_memory(current)
+            except gdb.MemoryError:
+                return None
+            if addr == modules:
+                break
+            module_addrs.append(addr - current_arch.ptrsize)
+            current = addr
+        return module_addrs
+
+    def get_offset_name(self, module_addrs):
+        for i in range(0x100):
+            offset_name = i * current_arch.ptrsize
+            valid = True
+            for module in module_addrs:
+                if not is_ascii_string(module + offset_name):
+                    valid = False
+                    break
+                s = read_cstring_from_memory(module + offset_name)
+                if len(s) < 2:
+                    valid = False
+                    break
+            if valid:
+                if not self.quiet:
+                    info("offsetof(module, name): {:#x}".format(offset_name))
+                return offset_name
+
+        if not self.quiet:
+            err("Not found module->name[MODULE_NAME_LEN]")
+        return None
+
+    def get_offset_sect_attrs(self, module_addrs):
+        """
+        struct attribute {
+            const char *name;
+            umode_t mode;
+        #ifdef CONFIG_DEBUG_LOCK_ALLOC
+            bool ignore_lockdep:1;
+            struct lock_class_key *key;
+            struct lock_class_key skey;
+        #endif
+        };
+
+        struct module_sect_attrs {
+            struct attribute_group {
+                const char *name;
+                umode_t (*is_visible)(struct kobject *, struct attribute *, int);
+                umode_t (*is_bin_visible)(struct kobject *, struct bin_attribute *, int); // v4.4~
+                struct attribute **attrs;
+                struct bin_attribute **bin_attrs; // v3.11~
+            } grp;
+            unsigned int nsections;
+            struct module_sect_attr {
+                struct bin_attribute { // v5.7~
+                    struct attribute attr;
+                    size_t size;
+                    void *private;
+                    struct address_space *(*f_mapping)(void); // v5.15~
+                    struct address_space *mapping; // v5.12~5.14
+                    ssize_t (*read)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+                    ssize_t (*write)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+                    loff_t (*llseek)(struct file *, struct kobject *, struct bin_attribute *, loff_t, int); // v6.7~
+                    int (*mmap)(struct file *, struct kobject *, struct bin_attribute *attr, struct vm_area_struct *vma);
+                } battr;
+                struct module_attribute { // ~v5.6
+                    struct attribute attr;
+                    ssize_t (*show)(struct module_attribute *, struct module_kobject *, char *);
+                    ssize_t (*store)(struct module_attribute *, struct module_kobject *, const char *, size_t count);
+                    void (*setup)(struct module *, const char *);
+                    int (*test)(struct module *);
+                    void (*free)(struct module *);
+                } mattr;
+                char *name; // ~v5.6
+                unsigned long address;
+            } attrs[];
+        };
+        """
+        for i in range(300):
+            offset_sect_attrs = current_arch.ptrsize * i
+            valid = True
+            for module in module_addrs:
+                # access check
+                if not is_valid_addr(module + offset_sect_attrs):
+                    valid = False
+                    break
+                sect_attrs = read_int_from_memory(module + offset_sect_attrs)
+                if not is_valid_addr(sect_attrs):
+                    valid = False
+                    break
+                firstname = read_int_from_memory(sect_attrs + self.offset_firstname)
+                if not is_valid_addr(firstname):
+                    valid = False
+                    break
+                sectname = read_cstring_from_memory(firstname)
+                # not really a requirement but oh well
+                if sectname is None or not sectname.startswith("."):
+                    valid = False
+                    break
+            if valid:
+                if not self.quiet:
+                    info("offsetof(module, sect_attrs): {:#x}".format(offset_sect_attrs))
+                return offset_sect_attrs
+
+        if not self.quiet:
+            err("Not found module->sect_attrs")
+        return None
+
+    def initialize(self):
+        self.module_addrs = self.get_modules_list()
+        if self.module_addrs is None:
+            return False
+
+        self.offset_name = self.get_offset_name(self.module_addrs)
+        if self.offset_name is None:
+            return False
+
+        kversion = Kernel.kernel_version()
+
+        if kversion < "3.11":
+            self.offset_nsections = current_arch.ptrsize * 3
+            self.offset_firstname = current_arch.ptrsize * 4
+        elif kversion < "4.4":
+            self.offset_nsections = current_arch.ptrsize * 4
+            self.offset_firstname = current_arch.ptrsize * 5
+        else:
+            self.offset_nsections = current_arch.ptrsize * 5
+            self.offset_firstname = current_arch.ptrsize * 6
+
+        if kversion < "5.7":
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 8
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 9
+        elif kversion < "5.12":
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 7
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 8
+        elif kversion < "6.7":
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 8
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 9
+        else:
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 9
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 10
+
+        self.offset_sect_attrs = self.get_offset_sect_attrs(self.module_addrs)
+        if self.offset_sect_attrs is None:
+            return False
+
+        return True
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        kversion = Kernel.kernel_version()
+        if kversion < "3.0":
+            if not self.quiet:
+                err("Unsupported v3.0 or before")
+            return
+
+        self.quiet = args.quiet
+
+        if self.initialize() is False:
+            if not self.quiet:
+                err("Failed to initialize")
+            return
+
+        for module in self.module_addrs:
+            name_string = read_cstring_from_memory(module + self.offset_name)
+            if name_string != args.name:
+                continue
+
+            # get nsections
+            sect_attrs = read_int_from_memory(module + self.offset_sect_attrs)
+            nsections = read_int_from_memory(sect_attrs + self.offset_nsections) & 0xffffffff
+            if not self.quiet:
+                info("nsections = {}".format(nsections))
+
+            # get each section name and address
+            sections = []
+            for i in range(nsections):
+                name_ptr = read_int_from_memory(sect_attrs + self.offset_firstname + self.sizeof_module_sect_attr * i)
+                name = read_cstring_from_memory(name_ptr)
+                addr = read_int_from_memory(sect_attrs + self.offset_address + self.sizeof_module_sect_attr * i)
+                if not self.quiet:
+                    info("name={:s}, addr={:#x}".format(name, addr))
+                sections.append((name, addr))
+
+                # unneeded, but for convenience
+                gdb.execute("set ${:s} = {:#x}".format(name.replace(".", "").replace("-", ""), addr))
+
+            # load
+            command = " ".join(['-s {:s} {:#x}'.format(name, addr) for (name, addr) in sections])
+            gdb.execute("add-symbol-file {!r} {:s}".format(args.path, command))
+            break
+        else:
+            if not self.quiet:
+                err("Not found {:s}".format(args.name))
+        return
+
+
+@register_command
 class KernelBlockDevicesCommand(GenericCommand):
     """Display block device list."""
+
     _cmdline_ = "kbdev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -55516,6 +58025,7 @@ class KernelBlockDevicesCommand(GenericCommand):
 @register_command
 class KernelCharacterDevicesCommand(GenericCommand):
     """Display character device list."""
+
     _cmdline_ = "kcdev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -55616,7 +58126,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             (10, 160): "/dev/nwflash",
             (10, 161): "/dev/userdma",
             (10, 162): "/dev/smbus",
-            (10, 163): "/dev/lik",
+            (10, 163): "/dev/lik", # codespell:ignore
             (10, 164): "/dev/ipmo",
             (10, 165): "/dev/vmmon",
             (10, 166): "/dev/i2o/ctl",
@@ -56660,6 +59170,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
 @register_command
 class KernelOperationsCommand(GenericCommand):
     """Display the members of commonly used function table (like struct file_operations) in the kernel."""
+
     _cmdline_ = "kops"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -57163,6 +59674,7 @@ class KernelOperationsCommand(GenericCommand):
 @register_command
 class KernelSysctlCommand(GenericCommand):
     """Dump sysctl parameters."""
+
     _cmdline_ = "ksysctl"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -57579,6 +60091,7 @@ class KernelSysctlCommand(GenericCommand):
 @register_command
 class KernelFileSystemsCommand(GenericCommand):
     """Dump filesystems."""
+
     _cmdline_ = "kfilesystems"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
     _aliases_ = ["kmounts"]
@@ -57981,7 +60494,7 @@ class KernelFileSystemsCommand(GenericCommand):
         while fst != 0:
             # parse name
             name_addr = read_int_from_memory(fst + self.offset_name)
-            name = read_cstring_from_memory(name_addr, ascii_only=True)
+            name = read_cstring_from_memory(name_addr)
 
             # parse suber_block
             fs_supers = read_int_from_memory(fst + self.offset_fs_supers)
@@ -58060,6 +60573,7 @@ class KernelFileSystemsCommand(GenericCommand):
 @register_command
 class KernelClockSourceCommand(GenericCommand):
     """Dump clock sources."""
+
     _cmdline_ = "kclock-source"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -58169,6 +60683,7 @@ class KernelClockSourceCommand(GenericCommand):
 @register_command
 class KernelTimerCommand(GenericCommand):
     """Dump timer."""
+
     _cmdline_ = "ktimer"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -58611,6 +61126,7 @@ class KernelTimerCommand(GenericCommand):
 @register_command
 class KernelPciDeviceCommand(GenericCommand):
     """Dump PCI devices."""
+
     _cmdline_ = "kpcidev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -59096,6 +61612,7 @@ class KernelPciDeviceCommand(GenericCommand):
 @register_command
 class KernelConfigCommand(GenericCommand):
     """Dump kernel config if available."""
+
     _cmdline_ = "kconfig"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -59165,6 +61682,7 @@ class KernelConfigCommand(GenericCommand):
 @register_command
 class KernelSearchCodePtrCommand(GenericCommand):
     """Search the code pointer in kernel data area."""
+
     _cmdline_ = "ksearch-code-ptr"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -59278,10 +61796,12 @@ class KernelSearchCodePtrCommand(GenericCommand):
 @register_command
 class KernelDmesgCommand(GenericCommand):
     """Dump the ring buffer of dmesg area."""
+
     _cmdline_ = "kdmesg"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -59612,6 +62132,10 @@ class KernelDmesgCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
+        if args.use_cache and hasattr(self, "out") and self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+            return
+
         self.quiet = args.quiet
         self.out = []
         kversion = Kernel.kernel_version()
@@ -59672,6 +62196,7 @@ class KernelDmesgCommand(GenericCommand):
 @register_command
 class StringsCommand(GenericCommand):
     """Search ASCII string (recursively) from specific location."""
+
     _cmdline_ = "strings"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["ascii-search"]
@@ -59683,32 +62208,24 @@ class StringsCommand(GenericCommand):
                         help="the end location to search from. (default: 64)")
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
     parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
-    parser.add_argument("-d", "--depth", default=3, type=int, help="recursive depth. (default: %(default)s)")
+    parser.add_argument("-d", "--depth", default=0, type=int, help="recursive depth. (default: %(default)s)")
     parser.add_argument("-r", "--range", default=0x40, type=lambda x: int(x, 16),
                         help="search range for recursively. (default: %(default)s)")
     parser.add_argument("-m", "--minlen", default=8, type=int, help="minimum string length (default: %(default)s)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} 0x00007ffffffde000 0x00007ffffffff000              # detect all\n".format(_cmdline_)
-    _example_ += "{:s} --minlen 10 0x00007ffffffde000 0x00007ffffffff000  # filter by length\n".format(_cmdline_)
-    _example_ += '{:s} -f "GLIBC" 0x00007ffffffde000 0x00007ffffffff000   # filter by keywords (-f, -e). need double-escape'.format(_cmdline_)
+    _example_ = "{:s} 0x00007ffffffde000 0x00007ffffffff000             # detect all\n".format(_cmdline_)
+    _example_ += "{:s} -m 10 0x00007ffffffde000 0x00007ffffffff000       # filter by length\n".format(_cmdline_)
+    _example_ += "{:s} -d 1 0x00007ffffffde000 0x00007ffffffff000        # if an address is found, it will be followed up\n".format(_cmdline_)
+    _example_ += '{:s} -f "GLIBC" 0x00007ffffffde000 0x00007ffffffff000  # filter by keywords (-f, -e). need double-escape'.format(_cmdline_)
 
     def strings(self, data, len_threshold):
-        string_printable = bytes(range(0x20, 0x7f))
         strings_result = []
-        current_str = ""
-        i = 0
-        while i < len(data):
-            if data[i] in string_printable:
-                current_str += chr(data[i])
-            else:
-                if len(current_str) >= len_threshold:
-                    strings_result.append((i - len(current_str), current_str))
-                current_str = ""
-            i += 1
-        if len(current_str) >= len_threshold:
-            strings_result.append((i - len(current_str), current_str))
+        for m in re.finditer(b"[\x20-\x7E]+\x00", data):
+            s = m.group(0).rstrip(b"\0")
+            if len(s) >= len_threshold:
+                strings_result.append((m.span(0)[0], String.bytes2str(s)))
         return strings_result
 
     def search_ascii(self, queue):
@@ -59769,8 +62286,12 @@ class StringsCommand(GenericCommand):
         self.search_range = args.range
         if args.end_location:
             first_range = args.end_location - args.location
+            if first_range != AddressUtil.align_address(first_range):
+                self.usage()
+                return
         else:
             first_range = args.range
+
         self.out = []
         queue = [(args.location, first_range, args.depth)]
         self.search_ascii(queue)
@@ -59783,6 +62304,7 @@ class StringsCommand(GenericCommand):
 @register_command
 class SyscallTableViewCommand(GenericCommand):
     """Display syscall_table entries."""
+
     _cmdline_ = "syscall-table-view"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -60013,6 +62535,7 @@ class SyscallTableViewCommand(GenericCommand):
 class ExecAsm:
     """Execute embedded asm. e.g.: ExecAsm(asm_op_list).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
+
     def __init__(self, target_codes, regs=None, step=None, debug=False):
         self.stdout = 1
         self.debug = debug
@@ -60040,7 +62563,7 @@ class ExecAsm:
         # pc
         # This value is used to point to the code location. It is not used to restore registers.
         d["pc"] = current_arch.pc
-        if is_arm32():
+        if is_arm32() or is_arm32_cortex_m():
             if current_arch.is_thumb():
                 d["pc"] -= 1
 
@@ -60160,6 +62683,7 @@ class ExecAsm:
 class ExecSyscall(ExecAsm):
     """Execute embedded asm for syscall. e.g.: ExecSyscall(nr, args).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
+
     def __init__(self, nr, args, debug=False):
         self.stdout = 1
         self.debug = debug
@@ -60255,6 +62779,7 @@ class ExecSyscall(ExecAsm):
 @register_command
 class TlsCommand(GenericCommand):
     """Display TLS base address. Requires glibc."""
+
     _cmdline_ = "tls"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -60263,6 +62788,8 @@ class TlsCommand(GenericCommand):
     parser.add_argument("-v", "--verbose", action="count", default=1, help="show more entries.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -vvv   # repeat `-v` to display more lines".format(_cmdline_)
 
     def print_all_tls(self):
         selected_thread = gdb.selected_thread()
@@ -60331,6 +62858,7 @@ class TlsCommand(GenericCommand):
 @register_command
 class FsbaseCommand(GenericCommand):
     """Display fsbase address."""
+
     _cmdline_ = "fsbase"
     _category_ = "02-b. Process Information - Base Address"
     _aliases_ = ["fs"]
@@ -60354,6 +62882,7 @@ class FsbaseCommand(GenericCommand):
 @register_command
 class GsbaseCommand(GenericCommand):
     """Display gsbase address."""
+
     _cmdline_ = "gsbase"
     _category_ = "02-b. Process Information - Base Address"
     _aliases_ = ["gs"]
@@ -60374,11 +62903,14 @@ class GsbaseCommand(GenericCommand):
 
 @register_command
 class GdtInfoCommand(GenericCommand):
-    """Print GDT entries. If user-land, show sample entries."""
+    """Print GDT/LDT entries. If user-land, show sample entries."""
+
     _cmdline_ = "gdtinfo"
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--only-gdt", action="store_true", help="show only GDT entries (qemu-system only).")
+    parser.add_argument("--only-ldt", action="store_true", help="show only LDT entries (qemu-system only).")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of gdt entries.")
     _syntax_ = parser.format_help()
@@ -60458,110 +62990,155 @@ class GdtInfoCommand(GenericCommand):
         gef_print("   * x86 code (native): 0x73")
         return
 
-    @staticmethod
-    def gdt_unpack(vals):
+    def entry_unpack(self, vals):
         if isinstance(vals, list):
-            val = vals[0] # for TSS/LDT
+            val = vals[0] # for 64bit SYSTEM segment
         else:
-            val = vals # for normal
+            val = vals
 
         # parse
-        _gdt = {}
-        _gdt["value"] = val
+        _entry = {}
+        _entry["value"] = val
 
-        _gdt["limit0"] = val & 0xffff
-        _gdt["base0"] = (val >> 16) & 0xffff
-        _gdt["base1"] = (val >> 32) & 0xff
-        _gdt["access_bytes"] = (val >> 40) & 0xff
-        _gdt["limit1"] = (val >> 48) & 0x0f
-        _gdt["flag_bytes"] = (val >> 52) & 0x0f
-        _gdt["base2"] = (val >> 56) & 0xff
+        _entry["type_bytes"] = (val >> 40) & 0b1111
+        _entry["p"] = (val >> 47) & 0b1
+        _entry["dpl"] = (val >> 45) & 0b11
 
-        _gdt["p"] = (_gdt["access_bytes"] >> 7) & 0x01
-        _gdt["dpl"] = (_gdt["access_bytes"] >> 5) & 0x03
-        _gdt["s"] = (_gdt["access_bytes"] >> 4) & 0x01
-        _gdt["type_bytes"] = _gdt["access_bytes"] & 0x0f
-        _gdt["ex"] = (_gdt["access_bytes"] >> 3) & 0x01
-        _gdt["dc"] = (_gdt["access_bytes"] >> 2) & 0x01
-        _gdt["rw"] = (_gdt["access_bytes"] >> 1) & 0x01
-        _gdt["ac"] = (_gdt["access_bytes"] >> 0) & 0x01
+        _entry["s"] = (val >> 44) & 0b1
+        _entry["s_s"] = ["SYSTEM", "CODE/DATA"][_entry["s"]]
 
-        _gdt["gr"] = (_gdt["flag_bytes"] >> 3) & 0x01
-        _gdt["db"] = (_gdt["flag_bytes"] >> 2) & 0x01
-        _gdt["l"] = (_gdt["flag_bytes"] >> 1) & 0x01
-        _gdt["avl"] = (_gdt["flag_bytes"] >> 0) & 0x01
-        _gdt["FLAGS"] = (_gdt["flag_bytes"] << 12) | _gdt["access_bytes"] # for easy use
+        if _entry["s"] == 0:
+            # SYSTEM segment
+            _entry["type_bytes_s"] = Color.boldify({
+                0b0000: ["Reserved", "Reserved"],
+                0b0001: ["Available 16bit TSS", "Reserved"],
+                0b0010: ["LDT", "LDT"],
+                0b0011: ["Busy 16bit TSS", "Reserved"],
+                0b0100: ["16bit call gate", "Reserved"],
+                0b0101: ["16/32bit task gate", "Reserved"],
+                0b0110: ["16bit interrupt gate", "Reserved"],
+                0b0111: ["16bit trap gate", "Reserved"],
+                0b1000: ["Reserved", "Reserved"],
+                0b1001: ["Available 32bit TSS", "64bit TSS"],
+                0b1010: ["Reserved", "Reserved"],
+                0b1011: ["Busy 32bit TSS", "Busy 64bit TSS"],
+                0b1100: ["32bit call gate", "64bit call gate"],
+                0b1101: ["Reserved", "Reserved"],
+                0b1110: ["32bit interrupt gate", "64bit interrupt gate"],
+                0b1111: ["32bit trap gate", "64bit trap gate"],
+            }[_entry["type_bytes"]][is_x86_64()])
 
-        grsize = {0: 1, 1: 4096}[_gdt["gr"]]
-        _gdt["limit"] = ((_gdt["limit1"] << 16) | _gdt["limit0"]) * grsize
-        _gdt["base"] = (_gdt["base2"] << 24) | (_gdt["base1"] << 16) | _gdt["base0"]
+        if _entry["s"] == 0 and _entry["type_bytes"] == 0b1100:
+            # SYSTEM segment (call gate)
+            _entry["offseg0"] = val & 0xffff
+            _entry["segsel"] = (val >> 16) & 0xffff
+            _entry["offseg1"] = (val >> 48) & 0xffff
+            _entry["offseg"] = (_entry["offseg1"] << 16) | _entry["offseg0"]
 
-        # create memo
-        if _gdt["ex"] == 0: # data
-            _gdt["ex_s"] = "DATA"
-            _gdt["rw_s"] = ["RO", "RW"][_gdt["rw"]]
-            _gdt["dc_s"] = ["UP", "DN"][_gdt["dc"]]
-        else: # code
-            _gdt["ex_s"] = "CODE"
-            _gdt["rw_s"] = ["RO", "RX"][_gdt["rw"]]
-            _gdt["dc_s"] = ["NC", "CO"][_gdt["dc"]]
+            if isinstance(vals, list):
+                # for 64bit SYSTEM segment (call gate)
+                _entry["value"] = vals[1] # overwrite
+                _entry["offseg2"] = vals[1] & 0xffffffff
+                _entry["offseg"] |= _entry["offseg2"] << 32
 
-        _gdt["s_s"] = ["SYS", "C/D"][_gdt["s"]]
-        dbl = (_gdt["db"] << 1) | _gdt["l"]
-        _gdt["dbl"] = "{:d}".format(dbl)
-        _gdt["dbl_s"] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
+        else:
+            # CODE/DATA segment or SYSTEM segment (not call gate)
+            _entry["g"] = (val >> 54) & 0x01
+            grsize = {0: 1, 1: 4096}[_entry["g"]]
 
-        # for TSS/LDT
-        if isinstance(vals, list):
-            val = vals[1]
-            _gdt["value2"] = _gdt["value"]
-            _gdt["value"] = val
-            _gdt["base3"] = val & 0xffffffff
-            _gdt["base"] = (_gdt["base3"] << 32) | _gdt["base"]
+            _entry["limit0"] = val & 0xffff
+            _entry["base0"] = (val >> 16) & 0xffff
+            _entry["base1"] = (val >> 32) & 0xff
+            _entry["limit1"] = (val >> 48) & 0x0f
+            _entry["base2"] = (val >> 56) & 0xff
 
-        Gdt = collections.namedtuple("Gdt", _gdt.keys())
-        return Gdt(*_gdt.values())
+            _entry["limit"] = ((_entry["limit1"] << 16) | _entry["limit0"]) * grsize
+            _entry["base"] = (_entry["base2"] << 24) | (_entry["base1"] << 16) | _entry["base0"]
 
-    @staticmethod
-    def gdtval2str(value, value_only=False):
+            if isinstance(vals, list):
+                # for 64bit SYSTEM segment (not call gate)
+                _entry["value"] = vals[1] # overwrite
+                _entry["base3"] = vals[1] & 0xffffffff
+                _entry["base"] |= _entry["base3"] << 32
+
+            if _entry["s"] == 1:
+                # CODE/DATA segment
+                _entry["db"] = (val >> 53) & 0x01
+                _entry["l"] = (val >> 52) & 0x01
+                dbl = (_entry["db"] << 1) | _entry["l"]
+                _entry["dbl"] = "{:d}".format(dbl)
+                _entry["dbl_s"] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
+
+                _entry["avl"] = (val >> 51) & 0x01
+
+                _entry["e"] = (val >> 43) & 0x01
+                _entry["dc"] = (val >> 42) & 0x01
+                _entry["rw"] = (val >> 41) & 0x01
+                _entry["ac"] = (val >> 40) & 0x01
+                if _entry["e"] == 0:
+                    # DATA segment
+                    _entry["e_s"] = Color.boldify("DATA")
+                    _entry["rw_s"] = ["RO", "RW"][_entry["rw"]]
+                    _entry["dc_s"] = ["EXPAND-UP", "EXPAND-DOWN"][_entry["dc"]]
+                else:
+                    # CODE segment
+                    _entry["e_s"] = Color.boldify("CODE")
+                    _entry["rw_s"] = ["RO", "RX"][_entry["rw"]]
+                    _entry["dc_s"] = ["NON-CONFORMING", "CONFORMING"][_entry["dc"]]
+                _entry["ac_s"] = ["NotAccessed", "Accessed"][_entry["ac"]]
+
+        Entry = collections.namedtuple("Entry", _entry.keys())
+        return Entry(*_entry.values())
+
+    def entry2str(self, value, value_only=False):
         if value_only:
             return "{:#018x}".format(value)
-        gdt = GdtInfoCommand.gdt_unpack(value)
-        if gdt.value == 0:
-            return "{:#018x}".format(gdt.value)
+
+        if value == 0: # and not list
+            return "{:#018x}".format(value)
+
+        entry = self.entry_unpack(value)
+        out = ""
+        out += "{:#018x} ".format(entry.value)
+        if entry.s == 0 and entry.type_bytes == 0b1100: # SYSTEM - call gate
+            out += "{:#018x} ".format(entry.segsel)
+            out += "{:#010x} ".format(entry.offseg)
+            out += "{:15s}".format("")
+
+            out += "{:<1d} ".format(entry.p)
+            out += "{:<3d} ".format(entry.dpl)
+            out += "{:<1d}{:11s} ".format(entry.s, "({:s})".format(entry.s_s))
+
+            out += "{:#06b}({:s})".format(entry.type_bytes, entry.type_bytes_s)
+
         else:
-            out = ""
-            out += "{:#018x} ".format(gdt.value)
-            out += "{:#018x} ".format(gdt.base)
-            out += "{:<#10x} ".format(gdt.limit)
-            out += "{:<2d} ".format(gdt.gr)
-            out += "{:s}({:s}) ".format(gdt.dbl, gdt.dbl_s)
-            out += "{:<3d} ".format(gdt.avl)
-            out += "{:d} ".format(gdt.p)
-            out += "{:<3d} ".format(gdt.dpl)
-            out += "{:d}({:s}) ".format(gdt.s, gdt.s_s)
-            out += "{:d}({:s}) ".format(gdt.ex, gdt.ex_s)
-            out += "{:d}({:s}) ".format(gdt.dc, gdt.dc_s)
-            out += "{:d}({:s}) ".format(gdt.rw, gdt.rw_s)
-            out += "{:d}".format(gdt.ac)
-            return out
+            out += "{:#018x} ".format(entry.base)
+            out += "{:#010x} ".format(entry.limit)
+            out += "{:<1d} ".format(entry.g)
 
-    @staticmethod
-    def gdtval2str_legend():
-        fmt = "{:2s} {:20s} {:18s} {:18s} "
-        fmt += "{:s} {:s} {:s}      "
-        fmt += "{:s} {:s} {:s} {:s}      "
-        fmt += "{:s}      {:s}    {:s}    {:s}"
-        legs = [
-            "#", "segment name", "value", "base",
-            "limit/size", "gr", "dbl",
-            "avl", "p", "dpl", "s",
-            "ex", "dc", "rw", "ac",
-        ]
-        return fmt.format(*legs)
+            if entry.s == 0: # SYSTEM - Other
+                out += "{:13s}".format("")
+            else: # CODE/DATA
+                out += "{:<1s}({:5s}) ".format(entry.dbl, entry.dbl_s)
+                out += "{:<3d} ".format(entry.avl)
 
-    @staticmethod
-    def get_segreg_list():
+            out += "{:<1d} ".format(entry.p)
+            out += "{:<3d} ".format(entry.dpl)
+            out += "{:<1d}{:11s} ".format(entry.s, "({:s})".format(entry.s_s))
+
+            if entry.s == 0: # SYSTEM - Other
+                out += "{:#06b}({:s})".format(entry.type_bytes, entry.type_bytes_s)
+            else: # CODE/DATA
+                type_bytes_s = []
+                type_bytes_s.append(entry.e_s)
+                type_bytes_s.append(entry.dc_s)
+                type_bytes_s.append(entry.rw_s)
+                type_bytes_s.append(entry.ac_s)
+                type_bytes_s = ",".join(type_bytes_s)
+                out += "{:#06b}({:s})".format(entry.type_bytes, type_bytes_s)
+        return out
+
+    def get_segreg_list(self):
         regs = {}
         if is_alive():
             for k in ["cs", "ds", "es", "fs", "gs", "ss"]:
@@ -60571,6 +63148,67 @@ class GdtInfoCommand(GenericCommand):
                 if v != 0 and ti == 0:
                     regs[index] = regs.get(index, []) + [k]
         return regs
+
+    def print_entries(self, entries, segm_desc=None, skip_null=False):
+        regs = self.get_segreg_list()
+
+        # print legend
+        fmt = "{:2s} {:20s} {:18s} {:18s} {:10s} {:1s} {:8s} {:3s} {:1s} {:3s} {:12s} {:s}"
+        legs = ["#", "SegmentName", "Value", "BASE", "LIMIT", "G", "D/B,L", "AVL", "P", "DPL", "S", "TYPE"]
+        gef_print(Color.colorify(fmt.format(*legs), Config.get_gef_setting("theme.table_heading")))
+
+        # print entry
+        i = 0
+        concat_prev = False
+        while i < len(entries):
+            # check null entry
+            if entries[i] == 0 and skip_null:
+                if not concat_prev:
+                    i += 1
+                    continue
+
+            # segment name
+            if segm_desc:
+                segname = segm_desc.get(i, "Undefined")
+            else:
+                segname = "???"
+
+            # parse and make string
+            entry = self.entry_unpack(entries[i])
+            if concat_prev:
+                # lower half of 64bit SYSTEM entries
+                estr = self.entry2str([entries[i - 1], entries[i]])
+                concat_prev = False
+
+                if not segname.endswith("-part2"):
+                    segname += "-part2"
+
+            elif entry.s == 0 and entry.type_bytes != 0 and (is_x86_64() or is_emulated32()):
+                # upper half of 64bit SYSTEM entries
+                estr = self.entry2str(entries[i], value_only=True)
+                concat_prev = True
+
+                if not segname.endswith("-part1"):
+                    segname += "-part1"
+
+            else:
+                # CODE/DATA segment or 16/32bit SYSTEM entries
+                estr = self.entry2str(entries[i])
+                concat_prev = False
+
+            # extra info
+            reglist = regs.get(i, [])
+            if reglist:
+                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
+                regstr = Color.colorify(reglist, Config.get_gef_setting("theme.dereference_register_value"))
+            else:
+                regstr = ""
+
+            # print
+            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, estr, regstr))
+
+            i += 1
+        return
 
     def print_gdt_example(self):
         # print title
@@ -60583,197 +63221,221 @@ class GdtInfoCommand(GenericCommand):
 
         # print legend
         info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
-        gef_print(Color.colorify(self.gdtval2str_legend(), Config.get_gef_setting("theme.table_heading")))
 
         # print entry
         if is_x86_64() or is_emulated32():
             entries = [
-                # idx, value
-                (0,    0x0000000000000000),
-                (1,    0x00cf9b000000ffff),
-                (2,    0x00af9b000000ffff),
-                (3,    0x00cf93000000ffff),
-                (4,    0x00cffb000000ffff),
-                (5,    0x00cff3000000ffff),
-                (6,    0x00affb000000ffff),
-                (7,    0x0000000000000000),
-                (8,    0x00008b000000206f),
-                (9,    [0x00008b000000206f, 0x00000000fffffe00]),
-                (10,   0x0000000000000000),
-                (11,   0x0000000000000000),
-                (12,   0x0000000000000000),
-                (13,   0x0000000000000000),
-                (14,   0x0000000000000000),
-                (15,   0x0040f50000000000),
+                0x0000000000000000,
+                0x00cf9b000000ffff,
+                0x00af9b000000ffff,
+                0x00cf93000000ffff,
+                0x00cffb000000ffff,
+                0x00cff3000000ffff,
+                0x00affb000000ffff,
+                0x0000000000000000,
+                0x00008b000000206f,
+                0x00000000fffffe00,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0040f50000000000,
             ]
         else:
             entries = [
-                # idx, value
-                (0,    0x0000000000000000),
-                (1,    0x0000000000000000),
-                (2,    0x0000000000000000),
-                (3,    0x0000000000000000),
-                (4,    0x0000000000000000),
-                (5,    0x0000000000000000),
-                (6,    0x0000000000000000),
-                (7,    0x0000000000000000),
-                (8,    0x0000000000000000),
-                (9,    0x0000000000000000),
-                (10,   0x0000000000000000),
-                (11,   0x0000000000000000),
-                (12,   0x00cf9a000000ffff),
-                (13,   0x00cf93000000ffff),
-                (14,   0x00cffa000000ffff),
-                (15,   0x00cff3000000ffff),
-                (16,   0xff008b804000206b),
-                (17,   0x0000000000000000),
-                (18,   0x00409a000000ffff),
-                (19,   0x00009a000000ffff),
-                (20,   0x000092000000ffff),
-                (21,   0x0000920000000000),
-                (22,   0x0000920000000000),
-                (23,   0x00409a000000ffff),
-                (24,   0x00009a000000ffff),
-                (25,   0x004092000000ffff),
-                (26,   0x00cf92000000ffff),
-                (27,   0x038f93708000ffff),
-                (28,   0x0000000000000000),
-                (29,   0x0000000000000000),
-                (30,   0x0000000000000000),
-                (31,   0xc40089706000206b),
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x00cf9a000000ffff,
+                0x00cf93000000ffff,
+                0x00cffa000000ffff,
+                0x00cff3000000ffff,
+                0xff008b804000206b,
+                0x0000000000000000,
+                0x00409a000000ffff,
+                0x00009a000000ffff,
+                0x000092000000ffff,
+                0x0000920000000000,
+                0x0000920000000000,
+                0x00409a000000ffff,
+                0x00009a000000ffff,
+                0x004092000000ffff,
+                0x00cf92000000ffff,
+                0x038f93708000ffff,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0xc40089706000206b,
             ]
 
-        regs = self.get_segreg_list()
-        for i, value in entries:
-            # get segment regs value
-            reglist = ", ".join(regs.get(i, []))
-            if reglist:
-                reglist = LEFT_ARROW + reglist
-            regstr = Color.colorify(reglist, Config.get_gef_setting("theme.dereference_register_value"))
-
-            # decode
-            segname = segm_desc.get(i, "Undefined")
-            is_part1 = segname in ["TSS-part1", "LDT-part1"]
-            valstr = self.gdtval2str(value, value_only=is_part1)
-
-            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+        if is_x86_64():
+            segm_desc = self.SEGMENT_DESCRIPTION_64
+        else:
+            segm_desc = self.SEGMENT_DESCRIPTION_32
+        self.print_entries(entries, segm_desc)
         return
 
     def print_gdt_real(self):
         # parse real value
         if is_qemu_system():
             res = gdb.execute("monitor info registers", to_string=True)
-            gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
-            base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
-
-            tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-            trseg, *_ = [int(tr.group(i), 16) for i in range(1, 5)]
-            tr_idx = trseg >> 3
-
+            r = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
         elif is_vmware():
             res = gdb.execute("monitor r gdtr", to_string=True)
             r = re.search(r"gdtr base=(\S+) limit=(\S+)", res)
-            base, limit = int(r.group(1), 16), int(r.group(2), 16)
 
-            # TODO: how to get
-            if is_x86_64():
-                tr_idx = 8
-            else:
-                tr_idx = 16
+        if not r:
+            err("Not found GDTR")
+            return
+
+        base = int(r.group(1), 16)
+        limit = int(r.group(2), 16)
 
         # print title
-        gef_print(titlify("GDT Entry"))
-
-        # print legend
-        gef_print(Color.colorify(self.gdtval2str_legend(), Config.get_gef_setting("theme.table_heading")))
+        gef_print(titlify("GDT Entry: base:{:#x} / limit:{:#x}".format(base, limit)))
 
         # check initialized or not
         if (base == 0x0 and limit == 0xffff) or limit == 0x0:
             err("GDT is uninitialized")
             return
 
-        gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
+        try:
+            gdt_data = read_memory(base, limit + 1)
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+        entries = slice_unpack(gdt_data, 8)
 
         if is_x86_64():
             segm_desc = self.SEGMENT_DESCRIPTION_64
         else:
             segm_desc = self.SEGMENT_DESCRIPTION_32
+        self.print_entries(entries, segm_desc)
+        return
 
-        # print entry
-        regs = self.get_segreg_list()
-        for i, b in enumerate(gdtinfo):
-            # get segment regs value
-            reglist = regs.get(i, [])
+    def print_ldt_real(self):
+        # parse real value
+        if is_qemu_system():
+            res = gdb.execute("monitor info registers", to_string=True)
+            r = re.search(r"LDT=\S+ (\S+) (\S+)", res)
+        elif is_vmware():
+            res = gdb.execute("monitor r ldtr", to_string=True)
+            r = re.search(r"ldtr base=(\S+) limit=(\S+)", res)
 
-            # decode
-            if is_x86_64() and i == tr_idx: # for TSS x64
-                valstr = self.gdtval2str(b, value_only=True)
-                prev = b
-                reglist.append("TR")
-            elif is_x86_64() and i == tr_idx + 1: # for TSS x64
-                valstr = self.gdtval2str([prev, b])
-            elif is_x86_32() and i == tr_idx: # for TSS x86
-                valstr = self.gdtval2str(b)
-                reglist.append("TR")
-            else:
-                valstr = self.gdtval2str(b)
+        if not r:
+            err("Not found LDTR")
+            return
 
-            if reglist:
-                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
-                regstr = Color.colorify(reglist, Config.get_gef_setting("theme.dereference_register_value"))
-            else:
-                regstr = ""
+        base = int(r.group(1), 16)
+        limit = int(r.group(2), 16)
 
-            segname = segm_desc.get(i, "Undefined")
-            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+        # print title
+        gef_print(titlify("LDT Entry: base:{:#x} / limit:{:#x}".format(base, limit)))
+
+        # check initialized or not
+        if (base == 0x0 and limit == 0xffffffff) or limit == 0x0:
+            err("LDT is uninitialized")
+            return
+
+        try:
+            ldt_data = read_memory(base, limit + 1)
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+        entries = slice_unpack(ldt_data, 8)
+
+        self.print_entries(entries, skip_null=True)
         return
 
     def print_gdt_entry_legend(self):
-        gef_print(titlify("legend (Normal GDT entry)"))
-        gef_print("              <flag_bytes->        <----access_bytes ---->")
-        gef_print("                                             <type_bytes->")
-        gef_print("31            23          19       15                    7             0bit")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |D |  |A |        |  |   |  |E |D |W |A |             |")
-        gef_print("| BASE2 31:24 |  |/ |L |V | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |B |  |L | 19:16  |  |   |  |X |C |R |C |             |")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print(" * base               : Start address")
-        gef_print(" * limit              : Segment size (4KB unit if gr==1)")
-        gef_print(" * flag_bytes")
-        gef_print("   * gr               : Granularity flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
-        gef_print("   * db               : Default operation size (0:16bitSeg, 1:32bitSeg)")
-        gef_print("   * l (Code seg)     : 64-bits code segment flag (0:32bit, 1:64bit)")
-        gef_print("   * l (Data seg)     : Reserved (0)")
-        gef_print("   * avl              : Available bit (0)")
-        gef_print(" * access_bytes")
-        gef_print("   * p                : Segment present flag (0:SegmentNotInMemory, 1:SegmentInMemory)")
-        gef_print("   * dpl              : Descriptor privilege level (0:Ring0, 3:Ring3)")
-        gef_print("   * s                : Descriptor type flag (0:System Segment, 1:Code/Data Segment)")
-        gef_print("   * type_bytes")
-        gef_print("     * ex             : Segment type (0:Data, 1:Code)")
-        gef_print("     * dc (Code seg)  : Conforming bit (0:NoConform, 1:Conform)")
-        gef_print("     * dc (Data seg)  : Direction bit (0:Up, 1:Down)")
-        gef_print("     * rw (Code seg)  : Read/Exec bit (0:ReadOnly, 1:Read/Exec)")
-        gef_print("     * rw (Data seg)  : Read/Write bit (0:ReadOnly, 1:Read/Write)")
-        gef_print("     * ac             : Access bit (0:NotAccessed, 1:Accessed)")
-        gef_print(titlify("legend (GDT entry for TSS/LDT)"))
-        gef_print("31            23          19       15                    7             0bit")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                           ZERO1 (only x64)                           | 12byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                        BASE3 47:32 (only x64)                        | 8byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |        |        |  |   |  |E |D |W |A |             |")
-        gef_print("| BASE2 31:24 |  | ZERO0  | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |        | 19:16  |  |   |  |X |C |R |C |             |")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print(" * limit (tss)        : __KERNEL_TSS_LIMIT(=0x206f(x64) / 0x206b(x86))")
-        gef_print(" * limit (ldt)        : (LDT entries * 8) - 1")
+        gef_print(titlify("legend (GDT/LDT entry for S=1)"))
+        gef_print("              <Flag bytes->        <----- Access bytes----->")
+        gef_print("                                          <---Type bytes--->")
+        gef_print(" 31            23 22 21 20 19       15 14  12   11 10 9  8  7            0bit")
+        gef_print("-------------------------------------------------------------------------- 8byte")
+        gef_print("|             |  |D |  |A |        |  |   |    |  |D |R |A |             |")
+        gef_print("| BASE2 31:24 |G |/ |L |V | LIMIT1 |P |DPL|S(1)|E |  |  |  | BASE1 23:16 |")
+        gef_print("|             |  |B |  |L | 19:16  |  |   |    |  |C |W |C |             |")
+        gef_print("-------------------------------------------------------------------------- 4byte")
+        gef_print("|            BASE0 15:0            |             LIMIT0 15:0             |")
+        gef_print("-------------------------------------------------------------------------- 0byte")
+        gef_print(" * BASE                 : Start address")
+        gef_print(" * LIMIT                : Segment size (4KB unit if G=1)")
+        gef_print(" * Flag bytes")
+        gef_print("   * G                  : Granularity flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
+        gef_print("   * D/B                : Segment flag (0:16bitSeg, 1:32bitSeg)")
+        gef_print("   * L (if code seg)    : 64-bit code segment flag (0:32bitSeg, 1:64bitSeg)")
+        gef_print("   * L (if data seg)    : Reserved (0)")
+        gef_print("   * AVL                : Used by system software")
+        gef_print(" * Access bytes")
+        gef_print("   * P                  : Segment present flag (0:SegmentNotInMemory, 1:SegmentInMemory)")
+        gef_print("   * DPL                : Descriptor privilege level (0:Ring0, 3:Ring3)")
+        gef_print("   * S                  : Descriptor type flag (0:SystemSegment, 1:Code/DataSegment)")
+        gef_print("   * Type bytes (if S=1)")
+        gef_print("     * E                : Executable bit (0:Unexecutable/DataSegment, 1:Executable/CodeSegment)")
+        gef_print("     * DC (if code seg) : Conforming bit (0:NoConforming, 1:Conforming)")
+        gef_print("     * DC (if data seg) : Direction bit (0:ExpandUp, 1:ExpandDown)")
+        gef_print("     * RW (if code seg) : Read/Exec bit (0:ExecOnly, 1:Read/Exec)")
+        gef_print("     * RW (if data seg) : Read/Write bit (0:ReadOnly, 1:Read/Write)")
+        gef_print("     * AC               : Access bit (0:NotAccessed, 1:Accessed)")
+        gef_print(titlify("legend (GDT/LDT entry for S=0, not call gate)"))
+        gef_print("                                          <---Type bytes--->")
+        gef_print(" 31            23 22       19       15 14  12   11          7            0bit")
+        gef_print("-------------------------------------------------------------------------- 16byte")
+        gef_print("|                             ZERO1 (only x64)                           |")
+        gef_print("-------------------------------------------------------------------------- 12byte")
+        gef_print("|                          BASE3 47:32 (only x64)                        |")
+        gef_print("-------------------------------------------------------------------------- 8byte")
+        gef_print("|             |  |        |        |  |   |    |           |             |")
+        gef_print("| BASE2 31:24 |G | ZERO0  | LIMIT1 |P |DPL|S(0)|   type    | BASE1 23:16 |")
+        gef_print("|             |  |        | 19:16  |  |   |    |           |             |")
+        gef_print("-------------------------------------------------------------------------- 4byte")
+        gef_print("|            BASE0 15:0            |             LIMIT0 15:0             |")
+        gef_print("-------------------------------------------------------------------------- 0byte")
+        gef_print(" * LIMIT (if TSS Entry) : __KERNEL_TSS_LIMIT")
+        gef_print(" * LIMIT (if LDT Entry) : (LDT entries * 8) - 1")
+        gef_print(" * Access bytes")
+        gef_print("   * Type bytes (if S=0)  16bit/32bit          / 64bit")
+        gef_print("     * 0000             : Reserved             / Reserved")
+        gef_print("     * 0001             : Available 16bit TSS  / Reserved")
+        gef_print("     * 0010             : LDT                  / LDT")
+        gef_print("     * 0011             : Busy 16bit TSS       / Reserved")
+        gef_print("     * 0100             : 16bit call gate      / Reserved")
+        gef_print("     * 0101             : 16/32bit task gate   / Reserved")
+        gef_print("     * 0110             : 16bit interrupt gate / Reserved")
+        gef_print("     * 0111             : 16bit trap gate      / Reserved")
+        gef_print("     * 1000             : Reserved             / Reserved")
+        gef_print("     * 1001             : Available 32bit TSS  / 64bit TSS")
+        gef_print("     * 1010             : Reserved             / Reserved")
+        gef_print("     * 1011             : Busy 32bit TSS       / Busy 64bit TSS")
+        gef_print("     * 1100             : 32bit call gate      / 64bit call gate")
+        gef_print("     * 1101             : Reserved             / Reserved")
+        gef_print("     * 1110             : 32bit interrupt gate / 64bit interrupt gate")
+        gef_print("     * 1111             : 32bit trap gate      / 64bit trap gate")
+        gef_print(titlify("legend (GDT/LDT entry for S=0, call gate)"))
+        gef_print("                                          <---Type bytes--->")
+        gef_print(" 31                        19       15 14  12   11          7      4     0bit")
+        gef_print("-------------------------------------------------------------------------- 16byte")
+        gef_print("|                              ZERO (only x64)                           |")
+        gef_print("-------------------------------------------------------------------------- 12byte")
+        gef_print("|                   OffsetInSegment2 63:32 (only x64)                    |")
+        gef_print("-------------------------------------------------------------------------- 8byte")
+        gef_print("|                                  |  |   |    |           |      |      |")
+        gef_print("|      OffsetInSegment1 31:16      |P |DPL|S(0)|   type    |0 0 0 |Param |")
+        gef_print("|                                  |  |   |    | (1 1 0 0) |      |Count |")
+        gef_print("-------------------------------------------------------------------------- 4byte")
+        gef_print("|       SegmentSelector 15:0       |        OffsetInSegment0 15:0        |")
+        gef_print("-------------------------------------------------------------------------- 0byte")
         return
 
     @parse_args
@@ -60784,7 +63446,10 @@ class GdtInfoCommand(GenericCommand):
             self.print_seg_info()
 
         if is_qemu_system() or is_vmware():
-            self.print_gdt_real()
+            if not args.only_ldt:
+                self.print_gdt_real()
+            if not args.only_gdt:
+                self.print_ldt_real()
         else:
             self.print_gdt_example()
 
@@ -60799,6 +63464,7 @@ class GdtInfoCommand(GenericCommand):
 @register_command
 class IdtInfoCommand(GenericCommand):
     """Print IDT entries. If user-land, show sample entries."""
+
     _cmdline_ = "idtinfo"
     _category_ = "04-a. Register - View"
 
@@ -60844,7 +63510,7 @@ class IdtInfoCommand(GenericCommand):
         _idt["offset"] = _idt["offset"] | ((val >> 32) & (0xffff0000))
         _idt["offset"] = ((val >> 32) & (0xffffffff00000000)) | _idt["offset"]
         _idt["segment"] = (val >> 16) & 0xffff
-        _idt["ist"] = (val >> 32) & 0b111
+        _idt["ist"] = (val >> 32) & 0b111 # codespell:ignore
         _idt["gate_type"] = (val >> 40) & (0b1111)
         _idt["dpl"] = (val >> 45) & (0b11)
         _idt["present"] = (val >> 47) & (0b1)
@@ -60864,7 +63530,7 @@ class IdtInfoCommand(GenericCommand):
         out = ""
         out += "{:#0{:d}x} ".format(idt.value, val_width)
         out += "{:#03x} ".format(idt.gate_type)
-        out += "{:#03x} ".format(idt.ist)
+        out += "{:#03x} ".format(idt.ist) # codespell:ignore
         out += "{:#03x} ".format(idt.dpl)
         out += "{:#03x} ".format(idt.present)
         out += "{:#06x}:{:#0{:d}x}".format(idt.segment, idt.offset, ofs_width)
@@ -60874,8 +63540,10 @@ class IdtInfoCommand(GenericCommand):
     def idtval2str_legend():
         val_width = current_arch.ptrsize * 4 + 2
         ofs_width = current_arch.ptrsize * 2 + 2
-        fmt = "{:3s} {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}"
-        return fmt.format("#", "name", "value", val_width, "typ", "ist", "dpl", "p", "segm", "offset", ofs_width)
+        return "{:3s} {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}".format(
+            "#", "name", "value", val_width, "typ",
+            "ist", "dpl", "p", "segm", "offset", ofs_width, # codespell:ignore
+        )
 
     def print_idt_example(self):
         # print title
@@ -60956,15 +63624,20 @@ class IdtInfoCommand(GenericCommand):
         # parse real value
         if is_qemu_system():
             res = gdb.execute("monitor info registers", to_string=True)
-            idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
-            base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
+            r = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
         elif is_vmware():
             res = gdb.execute("monitor r idtr", to_string=True)
             r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
-            base, limit = int(r.group(1), 16), int(r.group(2), 16)
+
+        if not r:
+            err("Not found IDTR")
+            return
+
+        base = int(r.group(1), 16)
+        limit = int(r.group(2), 16)
 
         # print title
-        gef_print(titlify("IDT Entry"))
+        gef_print(titlify("IDT Entry: base:{:#x} / limit:{:#x}".format(base, limit)))
 
         # print legend
         gef_print(Color.colorify(self.idtval2str_legend(), Config.get_gef_setting("theme.table_heading")))
@@ -60974,10 +63647,15 @@ class IdtInfoCommand(GenericCommand):
             err("IDT is uninitialized")
             return
 
-        idtinfo = slice_unpack(read_memory(base, limit + 1), max(current_arch.ptrsize * 2, 4))
+        try:
+            idt_data = read_memory(base, min(limit + 1, current_arch.ptrsize * 2 * 256))
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+        entries = slice_unpack(idt_data, current_arch.ptrsize * 2)
 
         # print entry
-        for i, b in enumerate(idtinfo):
+        for i, b in enumerate(entries):
             int_name = self.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
             valstr = self.idtval2str(b)
             sym = Symbol.get_symbol_string(self.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
@@ -60986,19 +63664,19 @@ class IdtInfoCommand(GenericCommand):
 
     def print_idt_entry_legend(self):
         gef_print(titlify("legend (Normal IDT entry)"))
-        gef_print("31                                 15  14    13  12     8       3      0bit")
+        gef_print(" 31                                 15  14    13  12     8       3     0bit")
         gef_print("------------------------------------------------------------------------")
         gef_print("|                              RESERVED                                | 12byte")
         gef_print("------------------------------------------------------------------------")
         gef_print("|                            OFFSET2 63:32                             | 8byte")
         gef_print("------------------------------------------------------------------------")
-        gef_print("|         OFFSET1 31:16            | P | DPL | 0 | Type | 00000 | IST  | 4byte")
+        gef_print("|         OFFSET1 31:16            | P | DPL | 0 | Type | 00000 | IST  | 4byte") # codespell:ignore
         gef_print("------------------------------------------------------------------------")
         gef_print("|         Segment Selector         |           OFFSET0 15:0            | 0byte")
         gef_print("------------------------------------------------------------------------")
         gef_print(" * segment selector : Segment selector for destination code segment")
         gef_print(" * offset           : Offset to handler procedure entry point")
-        gef_print(" * ist              : Interrupt stack table")
+        gef_print(" * ist              : Interrupt stack table") # codespell:ignore
         gef_print(" * type             : One of following")
         gef_print("                        0x5: Task gate")
         gef_print("                        0xC: Call gate")
@@ -61028,6 +63706,7 @@ class IdtInfoCommand(GenericCommand):
 @register_command
 class MemoryCompareCommand(GenericCommand):
     """Compare the memory contents of two locations."""
+
     _cmdline_ = "memcmp"
     _category_ = "03-b. Memory - View"
 
@@ -61130,6 +63809,7 @@ class MemoryCompareCommand(GenericCommand):
 @register_command
 class MemorySetCommand(GenericCommand):
     """Set the value to the memory range."""
+
     _cmdline_ = "memset"
     _category_ = "03-c. Memory - Patch"
 
@@ -61187,6 +63867,7 @@ class MemorySetCommand(GenericCommand):
 @register_command
 class MemoryCopyCommand(GenericCommand):
     """Copy the contents of one memory to another."""
+
     _cmdline_ = "memcpy"
     _category_ = "03-c. Memory - Patch"
 
@@ -61267,6 +63948,7 @@ class MemoryCopyCommand(GenericCommand):
 @register_command
 class MemorySwapCommand(GenericCommand):
     """Swap the contents of one memory to another."""
+
     _cmdline_ = "memswap"
     _category_ = "03-c. Memory - Patch"
 
@@ -61355,6 +64037,7 @@ class MemorySwapCommand(GenericCommand):
 @register_command
 class MemoryInsertCommand(GenericCommand):
     """Insert the contents of one memory to another."""
+
     _cmdline_ = "meminsert"
     _category_ = "03-c. Memory - Patch"
 
@@ -61437,6 +64120,7 @@ class MemoryInsertCommand(GenericCommand):
 @register_command
 class HashMemoryCommand(GenericCommand):
     """Calculate memory hash and CRC."""
+
     _cmdline_ = "hash-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -61544,6 +64228,7 @@ class HashMemoryCommand(GenericCommand):
 @register_command
 class IsMemoryZeroCommand(GenericCommand):
     """Check if all the memory in the specified range is 0x00, 0xff."""
+
     _cmdline_ = "is-mem-zero"
     _category_ = "03-d. Memory - Calculation"
 
@@ -61610,8 +64295,66 @@ class IsMemoryZeroCommand(GenericCommand):
 
 
 @register_command
+class StringLengthCommand(GenericCommand):
+    """Detect the length of the string."""
+
+    _cmdline_ = "strlen"
+    _category_ = "03-d. Memory - Calculation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
+    parser.add_argument("addr", metavar="ADDRESS", type=AddressUtil.parse_address,
+                        help="target address for checking.")
+    _syntax_ = parser.format_help()
+
+    def check(self, phys_mode, addr):
+        count = 0
+        current = addr
+        while True:
+            # calc read_size
+            if current & gef_getpagesize_mask_low():
+                read_size = AddressUtil.align_address_to_size(current, gef_getpagesize()) - current
+            else:
+                read_size = gef_getpagesize()
+            # read
+            try:
+                if phys_mode:
+                    data = read_physmem(current, read_size)
+                else:
+                    data = read_memory(current, read_size)
+            except (gdb.MemoryError, ValueError, OverflowError):
+                err("Read error {:#x}".format(addr))
+                return None
+            # count
+            idx = data.find(b"\0")
+            if idx != -1:
+                return count + idx
+            # goto next
+            count += len(data)
+            current += len(data)
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        if args.phys:
+            if not is_qemu_system():
+                err("Unsupported `--phys` option in this gdb mode")
+                return
+
+        length = self.check(args.phys, args.addr)
+        if length is None:
+            return
+
+        colored_length = Color.boldify("{:#x}".format(length))
+        gef_print("{:s} bytes".format(colored_length))
+        return
+
+
+@register_command
 class SequenceLengthCommand(GenericCommand):
-    """Detect consecutive lengths of the same sequence."""
+    """Detect consecutive length of the same sequence."""
+
     _cmdline_ = "seq-length"
     _category_ = "03-d. Memory - Calculation"
 
@@ -61634,12 +64377,12 @@ class SequenceLengthCommand(GenericCommand):
         current = addr
         while True:
             # calc read_size
-            if current & 0xfff:
-                read_size = AddressUtil.align_address_to_size(current, 0x1000) - current
+            if current & gef_getpagesize_mask_low():
+                read_size = AddressUtil.align_address_to_size(current, gef_getpagesize()) - current
             else:
-                read_size = 0x1000
+                read_size = gef_getpagesize()
             while read_size < unit:
-                read_size += 0x1000
+                read_size += gef_getpagesize()
             # read
             try:
                 if phys_mode:
@@ -61705,6 +64448,7 @@ class SequenceLengthCommand(GenericCommand):
 @register_command
 class MultiLineCommand(GenericCommand):
     """Execute multiple GDB commands in sequence."""
+
     _cmdline_ = "multi-line"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
     _aliases_ = ["ml"]
@@ -61774,6 +64518,7 @@ class MultiLineCommand(GenericCommand):
 @register_command
 class TimeCommand(GenericCommand):
     """Measure the time of the GDB command."""
+
     _cmdline_ = "time"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -61822,6 +64567,7 @@ class TimeCommand(GenericCommand):
 @register_command
 class SaveOutputCommand(GenericCommand):
     """Save the command outputs."""
+
     _cmdline_ = "saveo"
     _category_ = "09-g. Misc - Diff"
 
@@ -61882,6 +64628,7 @@ class SaveOutputCommand(GenericCommand):
 @register_command
 class DiffOutputCommand(GenericCommand):
     """The base command to diff of the command outputs."""
+
     _cmdline_ = "diffo"
     _category_ = "09-g. Misc - Diff"
 
@@ -61924,6 +64671,7 @@ class DiffOutputCommand(GenericCommand):
 @register_command
 class DiffOutputColordiffCommand(DiffOutputCommand):
     """Diff the two outputs by colordiff."""
+
     _cmdline_ = "diffo colordiff"
     _category_ = "09-g. Misc - Diff"
 
@@ -61982,6 +64730,7 @@ class DiffOutputColordiffCommand(DiffOutputCommand):
 @register_command
 class DiffOutputGitDiffCommand(DiffOutputCommand):
     """Diff the two outputs by git."""
+
     _cmdline_ = "diffo git-diff"
     _category_ = "09-g. Misc - Diff"
 
@@ -62039,6 +64788,7 @@ class DiffOutputGitDiffCommand(DiffOutputCommand):
 @register_command
 class DiffOutputListCommand(DiffOutputCommand):
     """List up saved outputs."""
+
     _cmdline_ = "diffo list"
     _category_ = "09-g. Misc - Diff"
     _aliases_ = ["diffo ls"]
@@ -62070,6 +64820,7 @@ class DiffOutputListCommand(DiffOutputCommand):
 @register_command
 class DiffOutputClearCommand(DiffOutputCommand):
     """Clear all saved outputs."""
+
     _cmdline_ = "diffo clear"
     _category_ = "09-g. Misc - Diff"
     _aliases_ = ["diffo del", "diffo rm"]
@@ -62105,6 +64856,7 @@ class DiffOutputClearCommand(DiffOutputCommand):
 @register_command
 class IiCommand(GenericCommand):
     """Shortcut `x/50i $pc` with opcode bytes."""
+
     _cmdline_ = "ii"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -62196,6 +64948,7 @@ class IiCommand(GenericCommand):
 @register_command
 class ConstGrepCommand(GenericCommand):
     """Grep for lines with #define in files under /usr/include."""
+
     _cmdline_ = "constgrep"
     _category_ = "09-b. Misc - Search"
 
@@ -62241,6 +64994,7 @@ class ConstGrepCommand(GenericCommand):
 @register_command
 class SlubDumpCommand(GenericCommand):
     """Dump slub free-list."""
+
     _cmdline_ = "slub-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -62267,18 +65021,21 @@ class SlubDumpCommand(GenericCommand):
                         help="specified offsetof(kmem_cache, random) when `kmem_cache.random` is falsely detected.")
     parser.add_argument("--no-byte-swap", action="store_true", default=None,
                         help="skip byteswap to chunk->next. when `kmem_cache.random` is falsely detected.")
+    parser.add_argument("--offset-node", type=lambda x: int(x, 16),
+                        help="specified offsetof(kmem_cache, node) when `kmem_cache.node` is falsely detected.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", "--verbose", "--partial", action="store_true",
-                        help="dump partial pages.")
+    parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump with partial pages.")
     parser.add_argument("-vv", "--vverbose", "--node", action="store_true",
-                        help="dump partial pages and node pages.")
+                        help="dump with partial pages and node pages.")
+    parser.add_argument("--only-partial", action="store_true", help="dump only partial pages.")
+    parser.add_argument("--only-node", action="store_true", help="dump only node pages.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256             # dump kmalloc-256 from all cpus\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --cpu 1     # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --partial   # show partial pages\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --node      # show partial pages and node pages\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --partial   # show active pages and partial pages\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --node      # show active pages, partial pages and node pages\n".format(_cmdline_)
     _example_ += "{:s} --list                  # list up slub cache names".format(_cmdline_)
 
     _note_ = "Simplified SLUB structure:\n"
@@ -62636,43 +65393,47 @@ class SlubDumpCommand(GenericCommand):
                 self.kmem_cache_offset_random = None # maybe CONFIG_SLAB_FREELIST_HARDENED=n
 
         # offsetof(kmem_cache, node)
-        start_offset = self.kmem_cache_offset_list + current_arch.ptrsize * 2 # sizeof(kmem_cache.list)
-        for candidate_offset in range(start_offset, start_offset + 0x100, current_arch.ptrsize): # walk from list for heuristic search
-            found = True
-            for kmem_cache in kmem_caches:
-                # fast path
-                if is_64bit():
-                    x = read_int_from_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 * 2)
-                    if is_valid_addr(x):
-                        y = read_int_from_memory(x)
-                        if y == 0xdead4ead00000000: # SPINLOCK_MAGIC
-                            break
-
-                # slow path
-                user_offset = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset, 4))
-                user_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4, 4))
-                object_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + self.kmem_cache_offset_object_size, 4))
-                if user_offset == user_size == 0:
-                    continue
-                if user_offset != 0 and user_size == 0:
-                    found = False
-                    break
-                if object_size < user_size:
-                    found = False
-                    break
-                node_offset = kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 + 4
-                node_addr = read_int_from_memory(node_offset)
-                if not is_valid_addr(node_addr):
-                    found = False
-                    break
-
-            if found:
-                self.kmem_cache_offset_node = candidate_offset + 4 * 2
-                self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
-                break
+        if self.args.offset_node is not None:
+            self.kmem_cache_offset_node = self.args.offset_node
+            self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
         else:
-            self.quiet_info("offsetof(kmem_cache, node): Not found")
-            self.kmem_cache_offset_node = None
+            start_offset = self.kmem_cache_offset_list + current_arch.ptrsize * 2 # sizeof(kmem_cache.list)
+            for candidate_offset in range(start_offset, start_offset + 0x100, current_arch.ptrsize): # walk from list for heuristic search
+                found = True
+                for kmem_cache in kmem_caches:
+                    # fast path
+                    if is_64bit():
+                        x = read_int_from_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 * 2)
+                        if is_valid_addr(x):
+                            y = read_int_from_memory(x)
+                            if y == 0xdead4ead00000000: # SPINLOCK_MAGIC
+                                break
+
+                    # slow path
+                    user_offset = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset, 4))
+                    user_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4, 4))
+                    object_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + self.kmem_cache_offset_object_size, 4))
+                    if user_offset == user_size == 0:
+                        continue
+                    if user_offset != 0 and user_size == 0:
+                        found = False
+                        break
+                    if object_size < user_size:
+                        found = False
+                        break
+                    node_offset = kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 + 4
+                    node_addr = read_int_from_memory(node_offset)
+                    if not is_valid_addr(node_addr):
+                        found = False
+                        break
+
+                if found:
+                    self.kmem_cache_offset_node = candidate_offset + 4 * 2
+                    self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
+                    break
+            else:
+                self.quiet_info("offsetof(kmem_cache, node): Not found")
+                self.kmem_cache_offset_node = None
 
         # offsetof(kmem_cache_cpu, freelist)
         self.kmem_cache_cpu_offset_freelist = 0
@@ -62728,17 +65489,21 @@ class SlubDumpCommand(GenericCommand):
         self.page_offset_inuse_objects_frozen = self.page_offset_freelist + current_arch.ptrsize
         self.quiet_info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
 
-        # offsetof(kmem_cache_node, partial)
-        node = read_int_from_memory(kmem_caches[0] - self.kmem_cache_offset_list + self.kmem_cache_offset_node)
-        for i in range(2, 16):
-            offset_partial = current_arch.ptrsize * i
-            if is_double_link_list(node + offset_partial):
-                self.kmem_cache_node_offset_partial = offset_partial
-                self.quiet_info("offsetof(kmem_cache_node, partial): {:#x}".format(self.kmem_cache_node_offset_partial))
-                break
-        else:
+        if self.kmem_cache_offset_node is None:
             self.quiet_info("offsetof(kmem_cache_node, partial): Not found")
             self.kmem_cache_node_offset_partial = None
+        else:
+            # offsetof(kmem_cache_node, partial)
+            node = read_int_from_memory(kmem_caches[0] - self.kmem_cache_offset_list + self.kmem_cache_offset_node)
+            for i in range(2, 16):
+                offset_partial = current_arch.ptrsize * i
+                if is_double_link_list(node + offset_partial):
+                    self.kmem_cache_node_offset_partial = offset_partial
+                    self.quiet_info("offsetof(kmem_cache_node, partial): {:#x}".format(self.kmem_cache_node_offset_partial))
+                    break
+            else:
+                self.quiet_info("offsetof(kmem_cache_node, partial): Not found")
+                self.kmem_cache_node_offset_partial = None
 
         self.initialized = True
         return True
@@ -62805,10 +65570,9 @@ class SlubDumpCommand(GenericCommand):
 
     def page2virt(self, page, kmem_cache, freelist_fastpath=()):
         if not self.args.skip_page2virt:
-            ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
-            r = re.search(r"Virt: (\S+)", ret)
-            if r:
-                return int(r.group(1), 16)
+            r = Kernel.page2virt(page["address"])
+            if r is not None:
+                return r
 
         # setup for heuristic search from freelist
         freelist = list(freelist_fastpath) + page["freelist"]
@@ -63213,12 +65977,13 @@ class SlubDumpCommand(GenericCommand):
                 self.out.append("    kmem_cache_cpu (cpu{:d}): {:#x}".format(cpu, kmem_cache["kmem_cache_cpu"][cpu]["address"]))
 
                 # dump active
-                active_page = kmem_cache["kmem_cache_cpu"][cpu]["active_page"]
-                freelist_fastpath = kmem_cache["kmem_cache_cpu"][cpu]["freelist"]
-                self.dump_page(active_page, kmem_cache, "active", freelist_fastpath)
+                if not self.args.only_partial and not self.args.only_node:
+                    active_page = kmem_cache["kmem_cache_cpu"][cpu]["active_page"]
+                    freelist_fastpath = kmem_cache["kmem_cache_cpu"][cpu]["freelist"]
+                    self.dump_page(active_page, kmem_cache, "active", freelist_fastpath)
 
                 # dump partial
-                if self.args.verbose or self.args.vverbose:
+                if (self.args.verbose or self.args.vverbose) and not self.args.only_node:
                     printed_count = 0
                     for partial_page in kmem_cache["kmem_cache_cpu"][cpu]["partial_pages"]:
                         self.dump_page(partial_page, kmem_cache, "partial")
@@ -63227,7 +65992,7 @@ class SlubDumpCommand(GenericCommand):
                         self.out.append("        (end of the list)")
 
             # dump nodes
-            if self.args.vverbose and "nodes" in kmem_cache:
+            if (self.args.vverbose and not self.args.only_partial) and "nodes" in kmem_cache:
                 for node_index, node_page_list in enumerate(kmem_cache["nodes"]):
                     node_addr = read_int_from_memory(kmem_cache["address"] + self.kmem_cache_offset_node + current_arch.ptrsize * node_index)
                     self.out.append("    kmem_cache_node[{:d}]: {:#x}".format(node_index, node_addr))
@@ -63308,6 +66073,12 @@ class SlubDumpCommand(GenericCommand):
         else:
             self.swap = not args.no_byte_swap
 
+        if args.only_partial:
+            args.verbose = True
+        if args.only_node:
+            args.verbose = True
+            args.vverbose = True
+
         self.args = args
         self.maps = None
         self.out = []
@@ -63320,6 +66091,7 @@ class SlubDumpCommand(GenericCommand):
 @register_command
 class SlubTinyDumpCommand(GenericCommand):
     """Dump slub-tiny free-list."""
+
     _cmdline_ = "slub-tiny-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -64018,6 +66790,7 @@ class SlubTinyDumpCommand(GenericCommand):
 @register_command
 class SlabDumpCommand(GenericCommand):
     """Dump slab free-list."""
+
     _cmdline_ = "slab-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -64868,6 +67641,7 @@ class SlabDumpCommand(GenericCommand):
 @register_command
 class SlobDumpCommand(GenericCommand):
     """Dump slob free-list."""
+
     _cmdline_ = "slob-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -65296,6 +68070,7 @@ class SlobDumpCommand(GenericCommand):
 @register_command
 class SlabContainsCommand(GenericCommand):
     """Resolve the slab cache (kmem_cache) an object belongs to."""
+
     _cmdline_ = "slab-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["slub-contains", "slub-tiny-contains", "xslub", "xslab"]
@@ -65481,9 +68256,10 @@ class SlabContainsCommand(GenericCommand):
 @register_command
 class BuddyDumpCommand(GenericCommand):
     """Dump zone of page allocator (buddy allocator) free-list."""
+
     _cmdline_ = "buddy-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
-    _aliases_ = ["zone-dump"]
+    _aliases_ = ["zone-dump", "pcplist"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-z", "--zone", action="append", choices=["DMA", "DMA32", "Normal", "HighMem", "Movable", "Device"],
@@ -65698,23 +68474,14 @@ class BuddyDumpCommand(GenericCommand):
             per_cpu_pageset = AddressUtil.align_address(per_cpu_pageset)
 
         current = AddressUtil.align_address_to_size(per_cpu_pageset + 4 * 3, current_arch.ptrsize) # count, high, batch
-        while True:
-            # search list_head
-            val1 = read_int_from_memory(current)
-            val2 = read_int_from_memory(current + current_arch.ptrsize)
-            if is_double_link_list(val1) and is_double_link_list(val2):
-                break
-            current += current_arch.ptrsize
+        while not is_double_link_list(current): # search list_head
+            current += current_arch.ptrsize * 2
         self.offset_lists = current - per_cpu_pageset
         self.quiet_info("offsetof(per_cpu_pageset, lists): {:#x}".format(self.offset_lists))
 
         # NR_PCP_LISTS
         current = per_cpu_pageset + self.offset_lists
-        while True:
-            val1 = read_int_from_memory(current)
-            val2 = read_int_from_memory(current + current_arch.ptrsize)
-            if not (is_double_link_list(val1) and is_double_link_list(val2)):
-                break
+        while is_double_link_list(current): # search not list_head
             current += current_arch.ptrsize * 2
         self.NR_PCP_LISTS = ((current - per_cpu_pageset) - self.offset_lists) // (current_arch.ptrsize * 2)
         self.quiet_info("NR_PCP_LISTS: {:d}".format(self.NR_PCP_LISTS))
@@ -65728,7 +68495,7 @@ class BuddyDumpCommand(GenericCommand):
         for i in range(6):
             zone = self.nodes[0] + self.sizeof_zone * i
             name_ptr = read_int_from_memory(zone + self.offset_name)
-            name = read_cstring_from_memory(name_ptr, ascii_only=True)
+            name = read_cstring_from_memory(name_ptr)
             if not name:
                 break
             self.MAX_NR_ZONES += 1
@@ -65834,15 +68601,8 @@ class BuddyDumpCommand(GenericCommand):
         self.initialized = True
         return True
 
-    def page2virt_wrapper(self, page):
-        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
-        r = re.search(r"Virt: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
-        return None
-
     # for per_cpu_pageset
-    def dump_list(self, list_i, i, is_highmem):
+    def dump_list(self, list_i, i, cpu_num, is_highmem):
         heap_page_color = Config.get_gef_setting("theme.heap_page_address")
         chunk_size_color = Config.get_gef_setting("theme.heap_chunk_size")
         freed_address_color = Config.get_gef_setting("theme.heap_chunk_address_freed")
@@ -65882,7 +68642,7 @@ class BuddyDumpCommand(GenericCommand):
             phys_str = "???"
 
             if not is_highmem:
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
                 phys = None
                 if virt:
                     phys = PageMap.v2p_from_map(virt, self.maps)
@@ -65892,13 +68652,16 @@ class BuddyDumpCommand(GenericCommand):
                 if phys is not None:
                     phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
 
-            # create msg
-            msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s} (pcp)".format(page_str, size_str, virt_str, phys_str)
-
             # add msg
             if self.sort:
+                msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s} (pcp, cpu={:d})".format(
+                    page_str, size_str, virt_str, phys_str, cpu_num,
+                )
                 self.out.append([page, size, msg])
             else:
+                msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s} (pcp)".format(
+                    page_str, size_str, virt_str, phys_str,
+                )
                 self.out.append(msg)
 
             # get next
@@ -65917,7 +68680,7 @@ class BuddyDumpCommand(GenericCommand):
             self.add_msg("cpu: {:d}".format(cpu_num))
             for i in range(self.NR_PCP_LISTS):
                 lists_i = pcp + self.offset_lists + sizeof_list_head * i
-                self.dump_list(lists_i, i, is_highmem)
+                self.dump_list(lists_i, i, cpu_num, is_highmem)
         return
 
     def dump_free_list(self, free_list, mtype, size, is_highmem):
@@ -65945,7 +68708,7 @@ class BuddyDumpCommand(GenericCommand):
             phys_str = "???"
 
             if not is_highmem:
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
                 phys = None
                 if virt:
                     phys = PageMap.v2p_from_map(virt, self.maps)
@@ -66064,7 +68827,7 @@ class BuddyDumpCommand(GenericCommand):
                 # sort_verbose
                 if prev_virt is None:
                     # first entry
-                    virt = self.page2virt_wrapper(page)
+                    virt = Kernel.page2virt(page)
                     if virt is not None:
                         phys = PageMap.v2p_from_map(virt, self.maps)
                         if phys is not None:
@@ -66074,7 +68837,7 @@ class BuddyDumpCommand(GenericCommand):
                     prev_size = size
                     continue
                 # second or after entries
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
                 if prev_virt + prev_size != virt:
                     diff = virt - (prev_virt + prev_size)
                     out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, diff))
@@ -66092,6 +68855,7 @@ class BuddyDumpCommand(GenericCommand):
 @register_command
 class KernelPipeCommand(GenericCommand):
     """Dump pipe information."""
+
     _cmdline_ = "kpipe"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -66387,13 +69151,6 @@ class KernelPipeCommand(GenericCommand):
             info("sizeof(pipe_buffer): {:#x}".format(self.sizeof_pipe_buffer))
         return pipe_files
 
-    def page2virt_wrapper(self, page):
-        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
-        r = re.search(r"Virt: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
-        return None
-
     def get_flags_str(self, flags_value):
         _flags = {
             "PIPE_BUF_FLAG_LRU":       0x01,
@@ -66462,7 +69219,7 @@ class KernelPipeCommand(GenericCommand):
                 offset = u32(read_memory(base + self.offset_offset, 4))
                 len_ = u32(read_memory(base + self.offset_len, 4))
                 flags = u32(read_memory(base + self.offset_flags, 4))
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
 
                 if idx in used_range:
                     status = Color.colorify("used", used_address_color)
@@ -66527,6 +69284,7 @@ class KernelPipeCommand(GenericCommand):
 @register_command
 class KernelBpfCommand(GenericCommand):
     """Dump bpf information."""
+
     _cmdline_ = "kbpf"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -66638,7 +69396,7 @@ class KernelBpfCommand(GenericCommand):
                 continue
             if (x & 2) != 2: # tag
                 continue
-            y = read_cstring_from_memory(x, ascii_only=True)
+            y = read_cstring_from_memory(x)
             if y and len(y) > 8 or y == "bpf":
                 continue
             z = read_int_from_memory(x)
@@ -67017,6 +69775,7 @@ class KernelBpfCommand(GenericCommand):
 @register_command
 class KernelIpcsCommand(GenericCommand):
     """Dump IPCs information (System V semaphore, message queue and shared memory)."""
+
     _cmdline_ = "kipcs"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -67335,9 +70094,13 @@ class KernelIpcsCommand(GenericCommand):
                         break
             if self.offset_sem_nsems:
                 nsems = read_int_from_memory(e + self.offset_sem_nsems)
-                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:d}".format(e, semid, key, uid, gid, mode, nsems))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:d}".format(
+                    e, semid, key, uid, gid, mode, nsems,
+                ))
             else:
-                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:s}".format(e, semid, key, uid, gid, mode, "?"))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:s}".format(
+                    e, semid, key, uid, gid, mode, "?",
+                ))
 
         return
 
@@ -67382,11 +70145,13 @@ class KernelIpcsCommand(GenericCommand):
             if self.offset_q_cbytes:
                 q_cbytes = read_int_from_memory(e + self.offset_q_cbytes)
                 q_qnum = read_int_from_memory(e + self.offset_q_qnum)
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<8d}"
-                self.out.append(fmt.format(e, msqid, key, uid, gid, mode, q_cbytes, q_qnum))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<8d}".format(
+                    e, msqid, key, uid, gid, mode, q_cbytes, q_qnum,
+                ))
             else:
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:8s}"
-                self.out.append(fmt.format(e, msqid, key, uid, gid, mode, "?", "?"))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:8s}".format(
+                    e, msqid, key, uid, gid, mode, "?", "?",
+                ))
         return
 
     def dump_ipc_shm_ids(self, ipc_ids_ptr):
@@ -67424,11 +70189,13 @@ class KernelIpcsCommand(GenericCommand):
             if self.offset_shm_nattch:
                 nattch = read_int_from_memory(e + self.offset_shm_nattch)
                 segsz = read_int_from_memory(e + self.offset_shm_segsz)
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<6d}"
-                self.out.append(fmt.format(e, shmid, key, uid, gid, mode, segsz, nattch))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<6d}".format(
+                    e, shmid, key, uid, gid, mode, segsz, nattch,
+                ))
             else:
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:6s}"
-                self.out.append(fmt.format(e, shmid, key, uid, gid, mode, "?", "?"))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:6s}".format(
+                    e, shmid, key, uid, gid, mode, "?", "?",
+                ))
         return
 
     @parse_args
@@ -67475,6 +70242,7 @@ class KernelIpcsCommand(GenericCommand):
 @register_command
 class KernelDeviceIOCommand(GenericCommand):
     """Dump I/O-port and I/O-memory information."""
+
     _cmdline_ = "kdevio"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -67524,14 +70292,14 @@ class KernelDeviceIOCommand(GenericCommand):
         if not self.sizeof_resource_size_t:
             name_ptr = read_int_from_memory(addr + 0x8 * 2) # sizeof(resource_size_t) == 8
             if name_ptr and is_valid_addr(name_ptr):
-                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                name = read_cstring_from_memory(name_ptr)
                 if name in ["PCI IO", "PCI mem"]:
                     self.sizeof_resource_size_t = 0x8
 
             if not self.sizeof_resource_size_t:
                 name_ptr = read_int_from_memory(addr + 0x4 * 2) # sizeof(resource_size_t) == 4
                 if name_ptr and is_valid_addr(name_ptr):
-                    name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                    name = read_cstring_from_memory(name_ptr)
                     if name in ["PCI IO", "PCI mem"]:
                         self.sizeof_resource_size_t = 0x4
 
@@ -67650,8 +70418,9 @@ class KernelDeviceIOCommand(GenericCommand):
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
             for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
-                fmt = "{:#018x} {:#08x}-{:#08x} {:{:d}s} {:#010x} ({:s})"
-                self.out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+                self.out.append("{:#018x} {:#08x}-{:#08x} {:{:d}s} {:#010x} ({:s})".format(
+                    addr, start, end, name, name_width, flags, self.get_flags_str(flags),
+                ))
 
         # iomem
         iomem_resource = KernelAddressHeuristicFinder.get_iomem_resource()
@@ -67673,8 +70442,9 @@ class KernelDeviceIOCommand(GenericCommand):
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
             for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
-                fmt = "{:#018x} {:#018x}-{:#018x} {:{:d}s} {:#010x} ({:s})"
-                self.out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+                self.out.append("{:#018x} {:#018x}-{:#018x} {:{:d}s} {:#010x} ({:s})".format(
+                    addr, start, end, name, name_width, flags, self.get_flags_str(flags),
+                ))
 
         # print
         if self.out:
@@ -67688,6 +70458,7 @@ class KernelDeviceIOCommand(GenericCommand):
 @register_command
 class KernelDmaBufCommand(GenericCommand):
     """Dump DMA-BUF information."""
+
     _cmdline_ = "kdmabuf"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -67833,7 +70604,7 @@ class KernelDmaBufCommand(GenericCommand):
         for i in range(1, 50):
             top = first_dma_buf - self.offset_list_node
             x = read_int_from_memory(top + current_arch.ptrsize * i)
-            s = read_cstring_from_memory(x, ascii_only=True)
+            s = read_cstring_from_memory(x)
             if s and len(s) >= 3:
                 self.offset_exp_name = current_arch.ptrsize * i
                 self.offset_name = current_arch.ptrsize * (i + 1)
@@ -67969,8 +70740,9 @@ class KernelDmaBufCommand(GenericCommand):
                 name = "<none>"
 
             # dump
-            fmt = "{:#018x} {:#018x} {:16s} {:16s} {:#018x} {:#018x}"
-            self.out.append(fmt.format(dma_buf, size, exp_name, name, file, priv))
+            self.out.append("{:#018x} {:#018x} {:16s} {:16s} {:#018x} {:#018x}".format(
+                dma_buf, size, exp_name, name, file, priv,
+            ))
 
             # dump sgl
             sgl = read_int_from_memory(priv + self.offset_sg_table)
@@ -68013,6 +70785,7 @@ class KernelDmaBufCommand(GenericCommand):
 @register_command
 class KernelIrqCommand(GenericCommand):
     """Dump IRQ (interrupt request) information."""
+
     _cmdline_ = "kirq"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -68362,7 +71135,7 @@ class KernelIrqCommand(GenericCommand):
             x = read_int_from_memory(action + current_arch.ptrsize * i)
             if not is_valid_addr(x):
                 continue
-            s = read_cstring_from_memory(x, ascii_only=True)
+            s = read_cstring_from_memory(x)
             if s and len(s) >= 4:
                 self.offset_name = current_arch.ptrsize * i
                 if not self.quiet:
@@ -68392,7 +71165,7 @@ class KernelIrqCommand(GenericCommand):
             else:
                 handler = read_int_from_memory(action + self.offset_handler)
                 name_ptr = read_int_from_memory(action + self.offset_name)
-                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                name = read_cstring_from_memory(name_ptr)
                 entries[irq] = [desc, action, handler, name]
 
         fmt = "{:3s} {:18s} {:18s} {:24s} {:18s}"
@@ -68447,6 +71220,7 @@ class KernelIrqCommand(GenericCommand):
 @register_command
 class KernelNetDeviceCommand(GenericCommand):
     """Dump net device information."""
+
     _cmdline_ = "knetdev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -68598,6 +71372,7 @@ class KernelNetDeviceCommand(GenericCommand):
 @register_command
 class VmallocDumpCommand(GenericCommand):
     """Dump vmalloc used list and freed list."""
+
     _cmdline_ = "vmalloc-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -68850,6 +71625,7 @@ class VmallocDumpCommand(GenericCommand):
 class KsymaddrRemoteCommand(GenericCommand):
     """Resolve kernel symbols from kallsyms table."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf
+
     _cmdline_ = "ksymaddr-remote"
     _category_ = "08-c. Qemu-system Cooperation - Linux Symbol"
     _aliases_ = ["ks"]
@@ -68859,6 +71635,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     parser.add_argument("-t", "--type", action="append", default=[], help="filter by symbol type.")
     parser.add_argument("-e", "--exact", action="store_true", help="use exact match.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-s", "--smart", action="store_true", help="filter __pfx_*, __ksymtab_*, etc.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
@@ -68930,7 +71707,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             position += 1
 
             # check if big symbol (6.1~)
-            if self.may_use_big_symbol:
+            if self.kernel_version >= (6, 1, 0):
                 if length & 0x80:
                     low = length & 0x7f
                     high = self.kernel_img[position]
@@ -68950,7 +71727,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.kallsyms.append([addr, name[1:], name[0]])
         return
 
-    def print_kallsyms(self, keywords, types):
+    def print_kallsyms(self, keywords, types, smart):
         if is_32bit():
             fmt = "{:#010x} {:s} {:s}"
         else:
@@ -68961,6 +71738,37 @@ class KsymaddrRemoteCommand(GenericCommand):
             kallsyms = [entry for entry in self.kallsyms if entry[2].lower() in types]
         else:
             kallsyms = self.kallsyms
+
+        if smart:
+            ignore_list = (
+                "__pfx_", # prefix symbols for function padding
+                "__kstrtab_",
+                "__ksymtab_",
+                "__kcrctab_",
+                "__tpstrtab_", # tracepoint
+                "__initcall__",
+                "__traceiter_",
+                "__tracepoint_",
+                "__probestub_",
+                "__already_done.",
+                "__flags.",
+                "__func__.",
+                "__key.",
+                "__mkey.",
+                "__msg.",
+                "__print_once.",
+                "__quirk.",
+                "__warned.",
+                "__wkey.",
+                "___done.",
+                "___once_key.",
+                "___tp_str.",
+                "__compound_literal.",
+                "__SCT__tp_func_",
+                "__SCK__tp_func_",
+                "__TRACE_SYSTEM_",
+            )
+            kallsyms = [entry for entry in kallsyms if not entry[1].startswith(ignore_list)]
 
         self.out = []
         if not keywords:
@@ -68981,6 +71789,15 @@ class KsymaddrRemoteCommand(GenericCommand):
                         break
         return
 
+    def get_kernel_version_triplet(self, version_number):
+        major = int(version_number.split(".")[0])
+        minor = int(version_number.split(".")[1])
+        if len(version_number.split(".")) == 2:
+            patch = 0
+        else:
+            patch = int(version_number.split(".")[2])
+        return (major, minor, patch)
+
     def get_kernel_version(self):
         # don't use Kernel.kernel_version, since it refers ksymaddr-remote
         r = re.search(rb"Linux version (\d+\.[\d.]*\d)[ -~]+", self.kernel_img)
@@ -68991,16 +71808,13 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.version_string_offset = r.span()[0]
         self.verbose_info("linux_banner: {:#x}".format(self.ro_base + self.version_string_offset))
         version_number = r.group(1).decode("ascii")
-        major = int(version_number.split(".")[0])
-        minor = int(version_number.split(".")[1])
-        self.kernel_version = (major, minor)
-        self.may_use_big_symbol = (major, minor) >= (6, 1)
+        self.kernel_version = self.get_kernel_version_triplet(version_number)
         return True
 
     def get_cfg_name(self):
         h = hashlib.sha256(String.str2bytes(self.version_string)).hexdigest()[-16:]
-        major, minor = self.kernel_version
-        cfg_file_name = os.path.join(GEF_TEMP_DIR, "ksymaddr-remote-{:d}.{:d}-{:s}.cfg".format(major, minor, h))
+        major, minor, patch = self.kernel_version
+        cfg_file_name = os.path.join(GEF_TEMP_DIR, "ksymaddr-remote-{:d}.{:d}.{:d}-{:s}.cfg".format(major, minor, patch, h))
         return cfg_file_name
 
     def save_config(self, param_name):
@@ -69077,11 +71891,11 @@ class KsymaddrRemoteCommand(GenericCommand):
         gef> hexdump -n byte kallsyms_token_table
         0xc6e58efc:    54 52 41 43 45 5f 53 59 53 00 41 43 45 5f 53 59    |  TRACE_SYS.ACE_SY  |
         0xc6e58f0c:    53 00 5f 53 59 53 00 54 45 4d 00 41 43 45 00 69    |  S._SYS.TEM.ACE.i  |
-        0xc6e58f1c:    67 00 70 6f 69 6e 74 5f 00 62 75 00 75 74 5f 00    |  g.point_.bu.ut_.  |
+        0xc6e58f1c:    67 00 70 6f 69 6e 74 5f 00 62 75 00 75 74 5f 00    |  g.point_.bu.ut_.  | # codespell:ignore
         0xc6e58f2c:    5f 53 59 00 54 52 00 5f 73 79 00 72 65 61 64 00    |  _SY.TR._sy.read.  |
         0xc6e58f3c:    66 5f 00 75 6c 00 62 6c 00 61 6c 6c 6f 63 00 74    |  f_.ul.bl.alloc.t  |
         0xc6e58f4c:    6c 00 63 6c 00 65 79 00 61 74 61 00 70 63 00 5f    |  l.cl.ey.ata.pc._  |
-        0xc6e58f5c:    65 6e 00 76 65 72 00 54 45 00 64 74 72 61 63 65    |  en.ver.TE.dtrace  |
+        0xc6e58f5c:    65 6e 00 76 65 72 00 54 45 00 64 74 72 61 63 65    |  en.ver.TE.dtrace  | # codespell:ignore
         0xc6e58f6c:    5f 65 76 65 6e 74 5f 00 61 70 00 61 74 65 00 74    |  _event_.ap.ate.t  |
         0xc6e58f7c:    6e 00 41 43 00 6d 73 00 72 61 77 5f 00 5f 63 6f    |  n.AC.ms.raw_._co  |
         0xc6e58f8c:    00 73 74 72 00 6d 6f 00 67 69 73 74 65 72 00 69    |  .str.mo.gister.i  |
@@ -69205,14 +72019,14 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def find_kallsyms_markers(self):
         # determines the size of table elements depended on kernel version.
-        if self.kernel_version < (4, 20):
+        if self.kernel_version < (4, 20, 0):
             # kallsyms_markers is unsigned long[]
             self.kallsyms_markers_table_element_size = current_arch.ptrsize
         else:
             # kallsyms_markers is unsigned int[]
             self.kallsyms_markers_table_element_size = 4
 
-        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
+        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
             ret = self.get_saved_config([
                 "offset_kallsyms_token_markers",
                 "offset_kallsyms_seqs_of_names",
@@ -69232,20 +72046,20 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         [Search policy]
         - From kallsyms_token_table, search backwards for 0x00000000.
-        - For kernel 6.2~6.8, there is kallsyms_seqs_of_names between kallsyms_markers and kallsyms_token_table,
+        - For kernel 6.1.42~6.8, there is kallsyms_seqs_of_names between kallsyms_markers and kallsyms_token_table,
           so this should be skipped.
 
         [Positional relationship]
         ...
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
         - kallsyms_seqs_of_names (6.9~)
         ...
 
-        [Sample values for 64bit ~6.2]
+        [Sample values for 64bit ~6.1.41]
         gef> hexdump -n dword kallsyms_markers
         0xffffffff8b2b4b48:    0x00000000 0x00000ab0 0x000016d3 0x00002316    |  .............#..  | <- kallsyms_markers
         0xffffffff8b2b4b58:    0x00002f38 0x00003cf8 0x00004c4c 0x000059c8    |  8/...<..LL...Y..  |
@@ -69257,7 +72071,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8b2b51a0:    0x00144e55 0x001458d8 0x00146338 0x00000000    |  UN...X..8c......  |
         0xffffffff8b2b51b0:    0x77007565 0x6461005f 0x5f640064 0x6e75665f    |  eu.w_.add.d__fun  | <- kallsyms_token_table
 
-        [Sample values for 64bit 6.2~]
+        [Sample values for 64bit 6.1.42~]
         gef> hexdump -n dword kallsyms_markers
         0xffffffff8d5fcde0:    0x00000000 0x00000b55 0x000017bb 0x000024c3    |  ....U........$..  | <- kallsyms_markers
         0xffffffff8d5fcdf0:    0x000030c1 0x00003dca 0x00004983 0x000058aa    |  .0...=...I...X..  |
@@ -69269,7 +72083,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8d5fd7b0:    0xa400291c 0x10a50024 0x0154a500 0xaa0116aa    |  .)..$.....T.....  |
         0xffffffff8d5fd7c0:    0x87610214 0x01274902 0xb201cbaf 0xbbbc01c9    |  ..a..I'.........  |
 
-        [Sample values for 32bit 6.2~]
+        [Sample values for 32bit 6.1.42~]
         gef> hexdump -n dword kallsyms_markers
         0xc6e0dc98:    0x00000000 0x00000c61 0x0000188f 0x00002641    |  ....a.......A&..  | <- kallsyms_markers
         0xc6e0dca8:    0x00003492 0x000041a7 0x00004e6b 0x00005ace    |  .4...A..kN...Z..  |
@@ -69304,9 +72118,9 @@ class KsymaddrRemoteCommand(GenericCommand):
                 break
             position = needle + self.kallsyms_markers_table_element_size - align_diff
 
-        # kallsyms_seqs_of_names is introduced from kernel 6.2
+        # kallsyms_seqs_of_names is introduced from kernel 6.1.42
         # in this case, it finds kallsyms_seqs_of_names instead of kallsyms_markers, so search back through memory again.
-        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
+        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
             if u32(self.kernel_img[needle + 4:needle + 8]) & 0xfff00000: # false positive, search again
                 position = needle
                 # aligned search from memory
@@ -69326,7 +72140,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
 
         # find kallsyms_seqs_of_names
-        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
+        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
             # locate kallsyms_seqs_of_names to get the table size of kallsyms_markers (used after).
             position = self.offset_kallsyms_markers + 4
             while self.kernel_img[position + 3] == 0:
@@ -69355,7 +72169,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         ...
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
@@ -69388,7 +72202,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # take the last element of kallsyms_marker
-        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe 6.2~6.8
+        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe 6.1.42~6.8
             kallsyms_markers_end = self.offset_kallsyms_seqs_of_names
         else:
             kallsyms_markers_end = self.offset_kallsyms_token_table
@@ -69433,7 +72247,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
@@ -69529,7 +72343,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 is_big_symbol = False # default
 
                 # check if big symbol (6.1~)
-                if self.may_use_big_symbol:
+                if self.kernel_version >= (6, 1, 0):
                     if symbol_size & 0x80:
                         low = symbol_size & 0x7f
                         high = self.kernel_img[pos + 1]
@@ -69625,7 +72439,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         - kallsyms_offsets (6.4~, CONFIG_KALLSYMS_BASE_RELATIVE=y)
@@ -69698,7 +72512,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         address_byte_size = current_arch.ptrsize
 
         # get relative_base_address
-        if self.kernel_version < (6, 4):
+        if self.kernel_version < (6, 4, 0):
             # ignore the 0 immediately above offset_kallsyms_num_syms.
             position = self.offset_kallsyms_num_syms
             while True:
@@ -69733,7 +72547,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         else: # kernel_version >= (6, 4):
             position = self.offset_kallsyms_token_index + 0x200
-            position_relative_base = AddressUtil.align_address_to_size(position + self.num_symbols * offset_byte_size, 8) # TODO: 0x8? 0x10? ptrsize?
+            # TODO: align size is 0x8? 0x10? ptrsize?
+            position_relative_base = AddressUtil.align_address_to_size(position + self.num_symbols * offset_byte_size, 8)
             relative_base_address_data = self.kernel_img[position_relative_base:position_relative_base + address_byte_size]
             relative_base_address = int.from_bytes(relative_base_address_data, endian_str)
             if not (relative_base_address and (relative_base_address & gef_getpagesize_mask_low()) == 0):
@@ -69788,7 +72603,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         - kallsyms_addresses (6.4~?, CONFIG_KALLSYMS_BASE_RELATIVE=n) # unimplemented yet because I have never seen this pattern.
@@ -69910,10 +72725,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 version_string_address = current + r.span()[0]
                 self.version_string = r.group(0)[:-2]
                 version_number = r.group(1).decode("ascii")
-                major = int(version_number.split(".")[0])
-                minor = int(version_number.split(".")[1])
-                self.kernel_version = (major, minor)
-                self.may_use_big_symbol = (major, minor) >= (6, 1)
+                self.kernel_version = self.get_kernel_version_triplet(version_number)
                 break
             current += step_size
 
@@ -69996,7 +72808,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     def do_invoke(self, args):
         self.verbose = args.verbose
         self.reparse = args.reparse
@@ -70015,7 +72827,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.quiet_err("Failed to parse.")
             return
 
-        self.print_kallsyms(args.keyword, args.type)
+        self.print_kallsyms(args.keyword, args.type, args.smart)
 
         if self.out:
             if len(self.out) > GefUtil.get_terminal_size()[0]:
@@ -70028,6 +72840,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 @register_command
 class VmlinuxToElfApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory using vmlinux-to-elf."""
+
     _cmdline_ = "vmlinux-to-elf-apply"
     _category_ = "08-c. Qemu-system Cooperation - Linux Symbol"
 
@@ -70076,21 +72889,21 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         # delete old file
         if os.path.exists(dumped_mem_file):
-            gef_print("Delete old {}".format(dumped_mem_file))
+            gef_print("Delete old {:s}".format(dumped_mem_file))
             os.unlink(dumped_mem_file)
         if os.path.exists(symboled_vmlinux_file):
-            gef_print("Delete old {}".format(symboled_vmlinux_file))
+            gef_print("Delete old {:s}".format(symboled_vmlinux_file))
             os.unlink(symboled_vmlinux_file)
 
         # delete files related to old file
         for f in os.listdir(GEF_TEMP_DIR):
             if os.path.basename(dumped_mem_file) in f:
                 remove_file = os.path.join(GEF_TEMP_DIR, f)
-                gef_print("Delete old {}".format(remove_file))
+                gef_print("Delete old {:s}".format(remove_file))
                 os.unlink(remove_file)
             if os.path.basename(symboled_vmlinux_file) in f:
                 remove_file = os.path.join(GEF_TEMP_DIR, f)
-                gef_print("Delete old {}".format(remove_file))
+                gef_print("Delete old {:s}".format(remove_file))
                 os.unlink(remove_file)
 
         # dump text
@@ -70120,10 +72933,10 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
             return None
 
-        gef_print("Dumped to {}".format(dumped_mem_file))
+        gef_print("Dumped to {:s}".format(dumped_mem_file))
 
         # apply vmlinux-to-elf
-        cmd = "{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.text_base)
+        cmd = "{!r} {!r} {!r} --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.text_base)
         warn("Execute `{:s}`".format(cmd))
         os.system(cmd)
 
@@ -70159,7 +72972,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.text_base, kinfo.text_base)
+        cmd = "add-symbol-file {!r} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.text_base, kinfo.text_base)
         warn("Execute `{:s}`".format(cmd))
         gdb.execute(cmd)
         return
@@ -70168,6 +72981,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 @register_command
 class TcmallocDumpCommand(GenericCommand):
     """tcmalloc (google-perftools-2.9.1) free-list viewer (only x64)."""
+
     _cmdline_ = "tcmalloc-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -70192,7 +73006,7 @@ class TcmallocDumpCommand(GenericCommand):
 
         # google-perftools-2.9.1/src/thread_cache.h
         """
-        00000000 ThreadCache     struc ; (sizeof=0x1040, align=0x8)
+        00000000 ThreadCache     struc ; (sizeof=0x1040, align=0x8) # codespell:ignore
         00000000 list_           FreeList 128 dup(?) # kClassSizesMax
         00001000 size_           dd ?
         00001004 max_size_       dd ?
@@ -70210,7 +73024,7 @@ class TcmallocDumpCommand(GenericCommand):
         self.ThreadCache_freelist_slot_count = kClassSizesMax
         # google-perftools-2.9.1/src/thread_cache.h
         """
-        00000000 FreeList        struc ; (sizeof=0x20, align=0x8)
+        00000000 FreeList        struc ; (sizeof=0x20, align=0x8) # codespell:ignore
         00000000 list_           dq ?
         00000008 length_         dd ?
         0000000C lowater_        dd ?
@@ -70586,6 +73400,7 @@ class TcmallocDumpCommand(GenericCommand):
 @register_command
 class GoHeapDumpCommand(GenericCommand):
     """go language v1.22.2 mheap dumper (only x64)."""
+
     _cmdline_ = "go-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -70854,6 +73669,7 @@ class GoHeapDumpCommand(GenericCommand):
 @register_command
 class TlsfHeapDumpCommand(GenericCommand):
     """TLSF (Two-Level Segregated Fit) v2.4.6 free-list viewer (only x64)."""
+
     _cmdline_ = "tlsf-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71050,6 +73866,7 @@ class TlsfHeapDumpCommand(GenericCommand):
 @register_command
 class HoardHeapDumpCommand(GenericCommand):
     """Hoard v3.13 heap free-list viewer (only x64)."""
+
     _cmdline_ = "hoard-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71201,6 +74018,7 @@ class HoardHeapDumpCommand(GenericCommand):
 @register_command
 class MimallocHeapDumpCommand(GenericCommand):
     """mimalloc heap free-list viewer (only x64)."""
+
     _cmdline_ = "mimalloc-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71402,6 +74220,7 @@ class MimallocHeapDumpCommand(GenericCommand):
 @register_command
 class V8Command(GenericCommand):
     """Print v8 tagged object, or load more commands from internet."""
+
     _cmdline_ = "v8"
     _category_ = "09-e. Misc - V8"
 
@@ -71411,30 +74230,47 @@ class V8Command(GenericCommand):
                        help="target map address.")
     group.add_argument("-l", "--load-v8-gdbinit", action="store_true",
                        help="load gdbinit for v8 from internet")
+    group.add_argument("-L", "--list-command", action="store_true",
+                       help="show newly added commands from v8 gdbinit.")
     _syntax_ = parser.format_help()
+
+    def get_gdbinit(self):
+        gdbinit_filename = os.path.join(GEF_TEMP_DIR, "gdbinit-v8")
+        if not os.path.exists(gdbinit_filename):
+            # https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit
+            url = "https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit?format=TEXT"
+            gdbinit_data = http_get(url)
+            import base64
+            gdbinit_data = base64.b64decode(gdbinit_data)
+            open(gdbinit_filename, "wb").write(gdbinit_data)
+            info("download gdbinit from internet.")
+        else:
+            info("reuse gdbinit cached previously.")
+        return gdbinit_filename
 
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         if args.load_v8_gdbinit:
-            gdbinit_filename = os.path.join(GEF_TEMP_DIR, "gdbinit-v8")
-            if not os.path.exists(gdbinit_filename):
-                # https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit
-                url = "https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit?format=TEXT"
-                gdbinit_data = http_get(url)
-                import base64
-                gdbinit_data = base64.b64decode(gdbinit_data)
-                open(gdbinit_filename, "wb").write(gdbinit_data)
-                info("download gdbinit from internet.")
-            else:
-                info("reuse gdbinit cached previouslly.")
-
+            gdbinit_filename = self.get_gdbinit()
             try:
                 gdb.execute("source {:s}".format(gdbinit_filename))
                 info("Successfully loaded.")
             except gdb.error:
                 err("Failed to load.")
+            return
+
+        if args.list_command:
+            gdb.execute("v8 -l", to_string=True)
+            gdbinit_filename = self.get_gdbinit()
+            data = open(gdbinit_filename).read()
+            for line in data.splitlines():
+                line = line.strip()
+                if line.startswith(("alias ", "define ")):
+                    comm = line.split()[1]
+                    gef_print(titlify(comm))
+                    gdb.execute("help {:s}".format(comm))
             return
 
         if args.address:
@@ -71450,6 +74286,7 @@ class V8Command(GenericCommand):
 @register_command
 class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
     """PartitionAlloc free-list viewer for chromium stable."""
+
     _cmdline_ = "partition-alloc-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71684,7 +74521,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         return roots
 
     def get_sentinel_slot_spans(self):
-        """sentinel_slot_span is default slot_span, so search it"""
+        """sentinel_slot_span is default slot_span, so search it."""
         sentinel = []
         try:
             t = AddressUtil.parse_address("&'base::internal::SlotSpanMetadata<true>::sentinel_slot_span_'")
@@ -71707,8 +74544,6 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_root.h
         struct base::PartitionRoot {
             struct alignas(internal::kPartitionCachelineSize) Settings {
-                QuarantineMode quarantine_mode = QuarantineMode::kAlwaysDisabled; // uint8_t
-                ScanMode scan_mode = ScanMode::kDisabled; // uint8_t
                 BucketDistribution bucket_distribution = BucketDistribution::kNeutral; // uint8_t
                 bool with_thread_cache = false;
                 bool use_cookie = false;
@@ -71719,6 +74554,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
                 bool zapping_by_free_flags = false;
                 bool scheduler_loop_quarantine = false;
                 bool memory_tagging_enabled_ = false;
+                bool use_random_memory_tagging_enabled_ = false;
                 TagViolationReportingMode memory_tagging_reporting_mode_ = TagViolationReportingMode::kUndefined;
                 ThreadIsolationOption thread_isolation;
                 bool use_pool_offset_freelists = false;
@@ -71745,12 +74581,14 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             uintptr_t next_super_page = 0;
             uintptr_t next_partition_page = 0;
             uintptr_t next_partition_page_end = 0;
-            SuperPageExtentEntry* current_extent = nullptr;
-            SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list PA_GUARDED_BY(internal::PartitionRootLock(this)) = nullptr;
+            ReadOnlySuperPageExtentEntry* current_extent = nullptr;
+            ReadOnlySuperPageExtentEntry* first_extent = nullptr;
+            ReadOnlyDirectMapExtent* direct_map_list PA_GUARDED_BY(internal::PartitionRootLock(this)) = nullptr;
             SlotSpanMetadata* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(internal::PartitionRootLock(this)) = {};
             int16_t global_empty_slot_span_ring_index PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             int16_t global_empty_slot_span_ring_size PA_GUARDED_BY(internal::PartitionRootLock(this)) = internal::kDefaultEmptySlotSpanRingSize;
+            uint16_t purge_generation PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
+            uint16_t purge_next_bucket_index PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
@@ -71838,7 +74676,11 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         _root["global_empty_slot_span_ring_index"] = u16(read_memory(current, 2))
         current += 2
         _root["global_empty_slot_span_ring_size"] = u16(read_memory(current, 2))
-        current += ptrsize - 2 # with pad
+        current += 2
+        _root["purge_generation"] = u16(read_memory(current, 2))
+        current += 2
+        _root["purge_next_bucket_index"] = u16(read_memory(current, 2))
+        current += ptrsize - 6 # with pad
         _root["inverted_self"] = read_int_from_memory(current)
         current += ptrsize
         _root["thread_caches_being_constructed_"] = u32(read_memory(current, 4))
@@ -71970,15 +74812,13 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
           PartitionFreelistEntry* freelist_head = nullptr;
           SlotSpanMetadata* next_slot_span = nullptr;
           PartitionBucket* const bucket = nullptr;
+          uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits; // 15 bits
+          uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits; // 15 bits
           uint32_t marked_full : 1
-          uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits; // 13 bits
-          uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits; // 13 bits
           const uint32_t can_store_raw_size_ : 1;
-          uint32_t freelist_is_sorted_ : 1;
-          uint32_t unused1_ : (32 - 1 - 2 * kMaxSlotsPerSlotSpanBits - 1 - 1); // 3 bits
+          uint16_t freelist_is_sorted_ : 1;
           uint16_t in_empty_cache_ : 1;
-          uint16_t empty_cache_index_ : kMaxEmptyCacheIndexBits; // 7 bits
-          uint16_t unused2_ : (16 - 1 - kMaxEmptyCacheIndexBits); // 8 bits
+          uint16_t empty_cache_index_ : kMaxEmptyCacheIndexBits; // 10 bits
         };
         """
         _slot_span["freelist_head"] = read_int_from_memory(current)
@@ -71989,17 +74829,16 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         current += ptrsize
         x = u32(read_memory(current, 4))
         current += 4
-        _slot_span["marked_full"] = (x >> 0) & 1
-        _slot_span["num_allocated_slots"] = (x >> 1) & 0x1fff
-        _slot_span["num_unprovisioned_slots"] = (x >> 14) & 0x1fff
-        _slot_span["can_store_raw_size_"] = (x >> 27) & 1
-        _slot_span["freelist_is_sorted_"] = (x >> 28) & 1
-        _slot_span["unused1_"] = (x >> 29) & 0x7
+        _slot_span["num_allocated_slots"] = (x >> 0) & 0x7fff
+        _slot_span["num_unprovisioned_slots"] = (x >> 15) & 0x7fff
+        _slot_span["marked_full"] = (x >> 30) & 1
+        _slot_span["can_store_raw_size_"] = (x >> 31) & 1
+
         x = u16(read_memory(current, 2))
         current += 2
-        _slot_span["in_empty_cache_"] = (x >> 0) & 1
-        _slot_span["empty_cache_index_"] = (x >> 1) & 0x7f
-        _slot_span["unused2_"] = (x >> 8) & 0xff
+        _slot_span["freelist_is_sorted_"] = (x >> 0) & 1
+        _slot_span["in_empty_cache_"] = (x >> 1) & 1
+        _slot_span["empty_cache_index_"] = (x >> 2) & 0x3ff
 
         SlotSpan = collections.namedtuple("SlotSpan", _slot_span.keys())
         slot_span = SlotSpan(*_slot_span.values())
@@ -72042,20 +74881,28 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.out.append("size_t max_size_of_allocated_bytes:                    {:#x}".format(root.max_size_of_allocated_bytes))
         self.out.append("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root.syscall_count))
         self.out.append("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root.syscall_total_time_ns))
-        self.out.append("std::atomic<size_t> total_size_of_brp_quarantined_bytes: {:#x}".format(root.total_size_of_brp_quarantined_bytes))
-        self.out.append("std::atomic<size_t> total_count_of_brp_quarantined_slots: {:#x}".format(root.total_count_of_brp_quarantined_slots))
-        self.out.append("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes: {:#x}".format(root.cumulative_size_of_brp_quarantined_bytes))
-        self.out.append("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots: {:#x}".format(root.cumulative_count_of_brp_quarantined_slots))
+        self.out.append("std::atomic<size_t> total_size_of_brp_quarantined_bytes: {:#x}".format(
+            root.total_size_of_brp_quarantined_bytes,
+        ))
+        self.out.append("std::atomic<size_t> total_count_of_brp_quarantined_slots: {:#x}".format(
+            root.total_count_of_brp_quarantined_slots,
+        ))
+        self.out.append("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes: {:#x}".format(
+            root.cumulative_size_of_brp_quarantined_bytes,
+        ))
+        self.out.append("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots: {:#x}".format(
+            root.cumulative_count_of_brp_quarantined_slots,
+        ))
         self.out.append("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root.empty_slot_spans_dirty_bytes))
         self.out.append("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root.max_empty_slot_spans_dirty_bytes_shift))
         self.out.append("uintptr_t next_super_page:                             {:s}".format(self.P(root.next_super_page)))
         self.out.append("uintptr_t next_partition_page:                         {:s}".format(self.P(root.next_partition_page)))
         self.out.append("uintptr_t next_partition_page_end:                     {:s}".format(self.P(root.next_partition_page_end)))
-        self.out.append("SuperPageExtentEntry* current_extent:                  {:s}".format(self.C(root.current_extent)))
+        self.out.append("ReadOnlySuperPageExtentEntry* current_extent:          {:s}".format(self.C(root.current_extent)))
         self.dump_extent_list(root.current_extent)
-        self.out.append("SuperPageExtentEntry* first_extent:                    {:s}".format(self.C(root.first_extent)))
+        self.out.append("ReadOnlySuperPageExtentEntry* first_extent:            {:s}".format(self.C(root.first_extent)))
         self.dump_extent_list(root.first_extent)
-        self.out.append("DirectMapExtent* direct_map_list:                      {:s}".format(self.C(root.direct_map_list)))
+        self.out.append("ReadOnlyDirectMapExtent* direct_map_list:              {:s}".format(self.C(root.direct_map_list)))
         self.dump_direct_map_list(root.direct_map_list, root)
         ring_len = len(root.global_empty_slot_span_ring)
         if self.verbose:
@@ -72067,13 +74914,19 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             self.out.append("SlotSpan* global_empty_slot_span_ring[{:3d}]:             ...".format(ring_len))
         self.out.append("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root.global_empty_slot_span_ring_index))
         self.out.append("int16_t global_empty_slot_span_ring_size:              {:#x}".format(root.global_empty_slot_span_ring_size))
+        self.out.append("uint16_t purge_generation:                             {:#x}".format(root.purge_generation))
+        self.out.append("uint16_t purge_next_bucket_index:                      {:#x}".format(root.purge_next_bucket_index))
         inv_inv = root.inverted_self ^ ((1 << (current_arch.ptrsize * 8)) - 1)
         inv_inv = str(ProcessMap.lookup_address(inv_inv))
         self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
         self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
         self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
-        self.out.append("size_t scheduler_loop_quarantine_branch_capacity_in_bytes: {:#x}".format(root.scheduler_loop_quarantine_branch_capacity_in_bytes))
-        self.out.append("internal::LightweightQuarantineRoot scheduler_loop_quarantine_root: {:#x}".format(root.scheduler_loop_quarantine_root))
+        self.out.append("size_t scheduler_loop_quarantine_branch_capacity_in_bytes: {:#x}".format(
+            root.scheduler_loop_quarantine_branch_capacity_in_bytes,
+        ))
+        self.out.append("internal::LightweightQuarantineRoot scheduler_loop_quarantine_root: {:#x}".format(
+            root.scheduler_loop_quarantine_root,
+        ))
         self.out.append("NoDestructor<...> scheduler_loop_quarantine:           {:#x}".format(root.scheduler_loop_quarantine))
         return
 
@@ -72259,6 +75112,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
 @register_command
 class MuslHeapDumpCommand(GenericCommand, BufferingOutput):
     """musl v1.2.5 (src/malloc/mallocng) heap reusable chunks viewer (only x64/x86)."""
+
     # See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl
     _cmdline_ = "musl-heap-dump"
     _category_ = "06-b. Heap - Other"
@@ -72737,8 +75591,11 @@ class MuslHeapDumpCommand(GenericCommand, BufferingOutput):
 
 
 class uClibcNgHeap:
+    """Manages uClibc heap-specific settings."""
+
     class uClibcChunk:
         """uClibc chunk class."""
+
         def __init__(self, addr, from_base=False):
             self.ptrsize = current_arch.ptrsize
             if from_base:
@@ -72823,6 +75680,7 @@ class uClibcNgHeap:
 @register_command
 class UclibcNgHeapDumpCommand(GenericCommand):
     """uclibc-ng v1.0.42 (libc/stdlib/malloc-standard) heap reusable chunks viewer (only x64/x86)."""
+
     _cmdline_ = "uclibc-ng-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -72971,7 +75829,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         libc = ProcessMap.process_lookup_path("libuClibc-")
         if libc is None:
             return None
-        ret = gdb.execute("got --no-pager --quiet --file '{:s}' <malloc>".format(libc.path), to_string=True)
+        ret = gdb.execute("got --no-pager --quiet --file {!r} <malloc>".format(libc.path), to_string=True)
         if not ret:
             return None
         elem = Color.remove_color(ret).splitlines()[0].split()
@@ -73281,6 +76139,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
 @register_command
 class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
     """Visualize chunks on a heap for uClibc-ng."""
+
     _cmdline_ = "uclibc-ng-visual-heap"
     _category_ = "06-b. Heap - Other"
 
@@ -73359,15 +76218,16 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             self.bins_info["large_bins"][i] = seen
 
         # make table
+        # dict[address] = ["bins info1", "bins info2", ...]
         self.bins_dict_for_address = {}
         for fastbin_idx, fastbin_list in self.bins_info["fastbins"].items():
-            for address in set(fastbin_list):
+            for address in fastbin_list:
                 pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
                 sz = self.fast_size_table[fastbin_idx][is_32bit()]
                 m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
                 self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
         for smallbin_idx, smallbin_list in self.bins_info["small_bins"].items():
-            for address in set(smallbin_list):
+            for address in smallbin_list:
                 pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == address])
                 if smallbin_idx == 0:
                     m = "unsortedbins[{:s}/{:d}]".format(pos, len(smallbin_list))
@@ -73380,7 +76240,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                     m = "smallbins[idx={:d},sz={:s}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
                 self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
         for largebin_idx, largebin_list in self.bins_info["large_bins"].items():
-            for address in set(largebin_list):
+            for address in largebin_list:
                 pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == address])
                 size = self.size_table[self.NSMALLBINS + largebin_idx][is_32bit()]
                 if isinstance(size, tuple):
@@ -73567,6 +76427,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
 @register_command
 class XStringCommand(GenericCommand):
     """Dump string like x/s command, but with hex-string style."""
+
     _cmdline_ = "xs"
     _category_ = "03-b. Memory - View"
 
@@ -73658,6 +76519,7 @@ class XStringCommand(GenericCommand):
 @register_command
 class XColoredCommand(GenericCommand):
     """Dump address like x/x command, but with coloring at some intervals."""
+
     _cmdline_ = "xc"
     _category_ = "03-b. Memory - View"
 
@@ -73713,6 +76575,7 @@ class XColoredCommand(GenericCommand):
 @register_command
 class XphysAddrCommand(GenericCommand):
     """Dump physical memory taking into account ROM mapping."""
+
     _cmdline_ = "xp"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -73757,7 +76620,7 @@ class XphysAddrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware", "kgdb"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     def do_invoke(self, args):
         # arg parse
         m = re.search(r"/(\d*)([xibhwg]*)", args.format)
@@ -73814,6 +76677,7 @@ class XphysAddrCommand(GenericCommand):
 @register_command
 class XSecureMemAddrCommand(GenericCommand):
     """Dump secure memory via qemu-system memory map."""
+
     _cmdline_ = "xsm"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -73966,12 +76830,14 @@ class XSecureMemAddrCommand(GenericCommand):
         return
 
 
-# The wsm command directly modifies /proc/<PID>/mem of qemu-system.
-# However, even though the memory change was successful, it may not be reflected in the behavior of the code.
-# I don't know the cause, but I'm guessing it's because qemu has an internal cache.
-# Apparently setting a breakpoint ignores this cache, so setting a temporary breakpoint avoids this problem.
 class TemporaryDummyBreakpoint(gdb.Breakpoint):
-    """Create a breakpoint to avoid gdb cache problem"""
+    """Create a breakpoint to avoid gdb cache problem."""
+
+    # The wsm command directly modifies /proc/<PID>/mem of qemu-system.
+    # However, even though the memory change was successful, it may not be reflected in the behavior of the code.
+    # I don't know the cause, but I'm guessing it's because qemu has an internal cache.
+    # Apparently setting a breakpoint ignores this cache, so setting a temporary breakpoint avoids this problem.
+
     def __init__(self):
         super().__init__("*{:#x}".format(0x0), type=gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
@@ -73985,6 +76851,7 @@ class TemporaryDummyBreakpoint(gdb.Breakpoint):
 @register_command
 class WSecureMemAddrCommand(GenericCommand):
     """Write secure memory via qemu-system memory map."""
+
     _cmdline_ = "wsm"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74108,6 +76975,7 @@ class WSecureMemAddrCommand(GenericCommand):
 @register_command
 class BreakSecureMemAddrCommand(GenericCommand):
     """Set a breakpoint in virtual memory by specifying the physical memory of the secure world."""
+
     _cmdline_ = "bsm"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74133,7 +77001,8 @@ class BreakSecureMemAddrCommand(GenericCommand):
 
 
 class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
-    """Create a breakpoint to thread_enter_user_mode"""
+    """Create a breakpoint to thread_enter_user_mode."""
+
     def __init__(self, vaddr, ta_offset):
         super().__init__("*{:#x}".format(vaddr), type=gdb.BP_BREAKPOINT, internal=True)
         self.count = 0
@@ -74189,6 +77058,7 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
 @register_command
 class OpteeBreakTaAddrCommand(GenericCommand):
     """Set a breakpoint to OPTEE-TA."""
+
     _cmdline_ = "optee-break-ta"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74222,6 +77092,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
 @register_command
 class OpteeBgetDumpCommand(GenericCommand):
     """Dump bget allocator of OPTEE-Trusted-App."""
+
     _cmdline_ = "optee-bget-dump"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74583,6 +77454,7 @@ class OpteeBgetDumpCommand(GenericCommand):
 @register_command
 class CpuidCommand(GenericCommand):
     """Get cpuid result."""
+
     _cmdline_ = "cpuid"
     _category_ = "04-a. Register - View"
 
@@ -75420,6 +78292,7 @@ class CpuidCommand(GenericCommand):
 @register_command
 class MsrCommand(GenericCommand):
     """Read or write MSR value."""
+
     _cmdline_ = "msr"
     _category_ = "04-a. Register - View"
 
@@ -75566,6 +78439,7 @@ class MsrCommand(GenericCommand):
 @register_command
 class MteTagsCommand(GenericCommand):
     """Display the MTE tag for the specified address (only ARM64)."""
+
     _cmdline_ = "mte-tags"
     _category_ = "02-f. Process Information - Security"
 
@@ -75602,6 +78476,7 @@ class MteTagsCommand(GenericCommand):
 @register_command
 class PacKeysCommand(GenericCommand):
     """Pretty-print PAC keys from qemu registers (only ARM64)."""
+
     _cmdline_ = "pac-keys"
     _category_ = "04-a. Register - View"
 
@@ -75626,7 +78501,7 @@ class PacKeysCommand(GenericCommand):
 
 
 class BitInfo:
-    """Printing various bit information of the register"""
+    """Printing various bit information of the register."""
 
     def __init__(self, name, register_bit=None, bit_info=(), desc=None):
         self.name = name
@@ -75640,10 +78515,11 @@ class BitInfo:
         self.bit_info = bit_info
         return
 
-    def bits_split(self, x):
+    @staticmethod
+    def bits_split(x, bits):
         # split by 4bits. e.g.: 0bXXYYYY -> 0b00XX_YYYY
         out = ""
-        for i in range(self.register_bit):
+        for i in range(bits):
             if x & (1 << i):
                 out = "1" + out
             else:
@@ -75656,7 +78532,8 @@ class BitInfo:
         regname = Color.colorify(self.name, "bold red")
         value_str = Color.colorify_hex(regval, "bold yellow")
         if split:
-            value_str += Color.colorify(" (={:s})".format(self.bits_split(regval)), "bold yellow")
+            bit_split_str = BitInfo.bits_split(regval, self.register_bit)
+            value_str += Color.colorify(" (={:s})".format(bit_split_str), "bold yellow")
         self.out.append("{:s} = {:s}".format(regname, value_str))
         return
 
@@ -75764,6 +78641,7 @@ class BitInfo:
 @register_command
 class QemuRegistersCommand(GenericCommand, BufferingOutput):
     """Get registers via qemu-monitor and shows the detail of x64/x86 system registers."""
+
     _cmdline_ = "qreg"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -75785,7 +78663,7 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
             [29, "NW", "Not-write through", "If 1, disable write-through caching globally"],
             [18, "AM", "Alignment mask", "If 1, alignment check enabled when EFLAGS.AC==1 and Ring-3"],
             [16, "WP", "Write protect", "If 1, the CPU can't write to read-only pages when Ring-0"],
-            [5, "NE", "Numeric error", "If 1, enable internal x87 FPU error reporting, else enables PC style x87 error detection"],
+            [5, "NE", "Numeric error", "If 1, enable internal x87 FPU error reporting, else enable PC style x87 error detection"],
             [4, "ET", "Extension type", "x64: always 1. i386: if 1, x87 DX math coprosessor instructions is supported"],
             [3, "TS", "Task switched", "If 1, allow the saving x87 task context upon a task switch only after x87 instruction used"],
             [2, "EM", "Emulation", "If 1, no x87 FPU present, else x87 FPU present"],
@@ -75819,32 +78697,33 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
 
         # CR4
         self.out.append(titlify("CR4 (Control Register 4)"))
-        desc = "It contains flags that enable some architectural extensions, and indicate OS or executive support for specific processor capabilities"
+        desc = "It contains flags that architectural extensions, indicate OS or executive support"
         bit_info = [
-            [25, "UINTR", "Enable user-mode inter-processor interrupts", "If 1, enables User-Interrupt Delivery."],
-            [24, "PKS", "Enable protection keys for supervisor-mode pages", "If 1, enables PKS"],
-            [23, "CET", "Control-flow Enforcement Technology", "If 1, enables CET"],
-            [22, "PKE", "Protection Key Enable", "If 1, enables PKE"],
+            [25, "UINTR", "Enable user-mode inter-processor interrupts", "If 1, enable User-Interrupt Delivery"],
+            [24, "PKS", "Enable protection keys for supervisor-mode pages", "If 1, enable PKS"],
+            [23, "CET", "Control-flow Enforcement Technology", "If 1, enable CET"],
+            [22, "PKE", "Protection Key Enable", "If 1, enable PKE"],
             [21, "SMAP", "Supervisor Mode Access Protection Enable", "If 1, access of data in a higher ring generates a fault"],
             [20, "SMEP", "Supervisor Mode Execution Protection Enable", "If 1, execution of code in a higher ring generates a fault"],
+            [19, "KL", "Key-Locker Enable", "If 1, enable LOADIWKEY"],
             [18, "OSXSAVE", "Enable XSAVE and Processor Extended States", "If 1, enable XSAVE/XSAVEC/XSAVEOPT/XSAVES/XRSTOR/XRSTORS/XSETBV/XGETBV"],
-            [17, "PCIDE", "PCID Enable", "If 1, enables process-context identifiers (PCIDs)"],
+            [17, "PCIDE", "PCID Enable", "If 1, enable process-context identifiers (PCIDs)"],
             [15, "FSGSBASE", "FSGSBASE Enable", "If 1, enable RDFSBASE/RDGSBASE/WRFSBASE/WRGSBASE"],
             [14, "SMXE", "Safer Mode Extensions Enable", "If 1, enable Trusted Execution Technology (TXT)"],
             [13, "VMXE", "Virtual Machine Extensions Enable", "If 1, enable Intel VT-x x86 virtualization"],
-            [12, "LA57", "57bit linear addresses", "If 1, enables 5-Level Paging"],
+            [12, "LA57", "57bit linear addresses", "If 1, enable 5-Level Paging"],
             [11, "UMIP", "User-Mode Instruction Prevention", "If 1, SGDT/SIDT/SLDT/SMSW/STR instructions can only be executed in ring0"],
-            [10, "OSXMMEXCPT", "OS support for Unmasked SIMD FP Exceptions", "If 1, enables unmasked SSE exceptions"],
-            [9, "OSFXSR", "OS support for FXSAVE/FXRSTOR", "If 1, enables SSE instructions and fast FPU save & restore"],
+            [10, "OSXMMEXCPT", "OS support for Unmasked SIMD FP Exceptions", "If 1, enable unmasked SSE exceptions"],
+            [9, "OSFXSR", "OS support for FXSAVE/FXRSTOR", "If 1, enable SSE instructions and fast FPU save & restore"],
             [8, "PCE", "Performance-Monitoring Counter enable", "If 1, RDPMC instruction can be executed at any privilege level"],
             [7, "PGE", "Page Global Enabled", "If 1, address translations (PDE or PTE records) may be shared between address spaces"],
-            [6, "MCE", "Machine Check Exception", "If 1, enables machine check interrupts to occur"],
+            [6, "MCE", "Machine Check Exception", "If 1, enable machine check interrupts to occur"],
             [5, "PAE", "Physical Address Extension", "If 1, changes page table layout to translate 32bit virtaddr into 36bit physaddr"],
             [4, "PSE", "Page Size Extension", "If 1, page size is 4MB, else 4KB, this bit is ignored when PAE or x86-64 long mode"],
-            [3, "DE", "Debugging Extensions", "If 1, enables debug register based breaks on I/O space access"],
+            [3, "DE", "Debugging Extensions", "If 1, enable debug register based breaks on I/O space access"],
             [2, "TSD", "Time Stamp Disable", "If 1, RDTSC instruction can only be executed in ring0"],
-            [1, "PVI", "Protected-mode Virtual Interrupts", "If 1, enables support for the virtual interrupt flag (VIF) in protected mode"],
-            [0, "VME", "Virtual 8086 Mode Extensions", "If 1, enables support for the virtual interrupt flag (VIF) in virtual-8086 mode"],
+            [1, "PVI", "Protected-mode Virtual Interrupts", "If 1, enable support for the virtual interrupt flag (VIF) in protected mode"],
+            [0, "VME", "Virtual 8086 Mode Extensions", "If 1, enable support for the virtual interrupt flag (VIF) in virtual-8086 mode"],
         ]
         cr4 = get_register("cr4", use_monitor=True)
         self.out.extend(BitInfo("CR4", bit_info=bit_info, desc=desc).make_out(cr4))
@@ -75992,7 +78871,7 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
         self.out.append("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         self.out.append("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
 
-        ret = gdb.execute("gdtinfo -q", to_string=True)
+        ret = gdb.execute("gdtinfo -q --only-gdt", to_string=True)
         self.out.append(ret.rstrip())
 
         # IDTR
@@ -76016,6 +78895,9 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
         self.out.append("  base : {:s}: starting address of LDT".format(Color.boldify("{:#x}".format(base))))
         self.out.append("  limit: {:s}: segment limit".format(Color.boldify("{:#x}".format(limit))))
         self.out.append("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
+
+        ret = gdb.execute("gdtinfo -q --only-ldt", to_string=True)
+        self.out.append(ret.rstrip())
         return
 
     def qregisters(self):
@@ -76036,7 +78918,6 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.add_info = args.verbose
         self.out = []
@@ -76046,6 +78927,8 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
 
 
 class PageMap:
+    """A collection of utility functions that are related to memory map from page tables."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_page_maps_by_pagewalk(command):
@@ -76189,6 +79072,7 @@ class PageMap:
 @register_command
 class Virt2PhysCommand(GenericCommand):
     """Transfer from virtual address to physical address."""
+
     _cmdline_ = "v2p"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -76231,6 +79115,7 @@ class Virt2PhysCommand(GenericCommand):
 @register_command
 class Phys2VirtCommand(GenericCommand):
     """Transfer from physical address to virtual address."""
+
     _cmdline_ = "p2v"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -76284,6 +79169,7 @@ class Phys2VirtCommand(GenericCommand):
 @register_command
 class PagewalkCommand(GenericCommand, BufferingOutput):
     """The base command to get physical memory info via qemu-monitor."""
+
     _cmdline_ = "pagewalk"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = ["pw", "ptdump", "pt"]
@@ -76294,6 +79180,7 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
     subparsers.add_parser("x86")
     subparsers.add_parser("arm")
     subparsers.add_parser("arm64")
+    subparsers.add_parser("riscv")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -76533,7 +79420,7 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
         return
 
     def make_out(self, mappings):
-        if len(mappings) == 0:
+        if mappings is None or len(mappings) == 0:
             self.warn("No virtual mappings found")
             return
 
@@ -76600,7 +79487,7 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
     # Need not @parse_args because argparse can't stop interpreting options for pagewalk sub-command.
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     def do_invoke(self, argv):
         if is_x86_32() or is_x86_16():
             gdb.execute("pagewalk x86 {}".format(" ".join(argv)))
@@ -76610,12 +79497,578 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
             gdb.execute("pagewalk arm {}".format(" ".join(argv)))
         elif is_arm64():
             gdb.execute("pagewalk arm64 {}".format(" ".join(argv)))
+        elif is_riscv64() or is_riscv32():
+            gdb.execute("pagewalk riscv {}".format(" ".join(argv)))
+        return
+
+
+@register_command
+class PagewalkRiscvCommand(PagewalkCommand):
+    """Dump pagetable for riscv64/32 using qemu-monitor."""
+
+    _cmdline_ = "pagewalk riscv"
+    _category_ = "08-a. Qemu-system Cooperation - General"
+    _aliases_ = ["pagewalk riscv32", "pagewalk riscv64"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--print-each-level", action="store_true", help="show all level pagetables.")
+    parser.add_argument("--no-merge", action="store_true",
+                        help="do not merge similar/consecutive address.")
+    parser.add_argument("--sort-by-phys", action="store_true",
+                        help="sort by physical address.")
+    parser.add_argument("--simple", action="store_true",
+                        help="merge with ignoring physical address consecutivness.")
+    parser.add_argument("--filter", metavar="REGEX", type=re.compile, default=[], action="append",
+                        help="filter by REGEX pattern.")
+    parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified virtual address.")
+    parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified physical address.")
+    parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="show all level pagetables only associated specified address.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        self.mappings = None
+        return
+
+    def format_flags(self, flag_info):
+        flag_info_key = tuple(flag_info)
+        x = self.flags_strings_cache.get(flag_info_key, None)
+        if x is not None:
+            return x
+
+        flags = []
+
+        perm = ""
+        perm += ["-", "R"]["R" in flag_info]
+        perm += ["-", "W"]["W" in flag_info]
+        perm += ["-", "X"]["X" in flag_info]
+        if perm in ["R--", "RW-", "--X", "R-X", "RWX"]:
+            flags.append(perm)
+        else:
+            flags.append("???")
+
+        if "U" in flag_info:
+            if self.sstatus_sum:
+                flags.append("USER+KERN")
+            else:
+                flags.append("USER")
+        else:
+            flags.append("KERN")
+
+        if not self.simple:
+            if "A" in flag_info:
+                flags.append("ACCESSED")
+            if "D" in flag_info:
+                flags.append("DIRTY")
+            if "G" in flag_info:
+                flags.append("GLOBAL")
+
+        flag_string = " ".join(flags)
+        self.flags_strings_cache[flag_info_key] = flag_string
+        return flag_string
+
+    def pagewalk_L5(self):
+        self.quiet_add_out(titlify("Level 5 Entry"))
+        L5E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L5_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L4_BITS"] + self.bits["L3_BITS"] + self.bits["L2_BITS"] + self.bits["L1_BITS"] + self.bits["OFFSET"]
+                sign_ext = 0xfe00000000000000 if ((i >> (self.bits["L5_BITS"] - 1)) & 1) else 0
+                new_va = va_base + (sign_ext | (i << b))
+                new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L5E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 256 * 1024 * 1024 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "256TB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L5 Entry (256TB): {:d}".format(len(L5E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L5E)))
+        self.TABLES = L5E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L4(self):
+        self.quiet_add_out(titlify("Level 4 Entry"))
+        L4E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L4_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L3_BITS"] + self.bits["L2_BITS"] + self.bits["L1_BITS"] + self.bits["OFFSET"]
+                if "L5_BITS" in self.bits:
+                    new_va = va_base + (i << b)
+                    new_va_end = new_va + (1 << b)
+                else:
+                    sign_ext = 0xffff000000000000 if ((i >> (self.bits["L4_BITS"] - 1)) & 1) else 0
+                    new_va = va_base + (sign_ext | (i << b))
+                    new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L4E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 512 * 1024 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "512GB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L4 Entry (512GB): {:d}".format(len(L4E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L4E)))
+        self.TABLES = L4E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L3(self):
+        self.quiet_add_out(titlify("Level 3 Entry"))
+        L3E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L3_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L2_BITS"] + self.bits["L1_BITS"] + self.bits["OFFSET"]
+                if "L4_BITS" in self.bits:
+                    new_va = va_base + (i << b)
+                    new_va_end = new_va + (1 << b)
+                else:
+                    sign_ext = 0xffffff8000000000 if ((i >> (self.bits["L3_BITS"] - 1)) & 1) else 0
+                    new_va = va_base + (sign_ext | (i << b))
+                    new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L3E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 1 * 1024 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "1GB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L3 Entry (1GB): {:d}".format(len(L3E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L3E)))
+        self.TABLES = L3E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L2(self):
+        self.quiet_add_out(titlify("Level 2 Entry"))
+        L2E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L2_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L1_BITS"] + self.bits["OFFSET"]
+                new_va = va_base + (i << b)
+                new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                if is_riscv64():
+                    ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+                else:
+                    ppn = (entry >> 10) & 0x3fffff # 22 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L2E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 2 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "2MB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L2 Entry (2MB): {:d}".format(len(L2E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L2E)))
+        self.TABLES = L2E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L1(self):
+        self.quiet_add_out(titlify("Level 1 Entry"))
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L1_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["OFFSET"]
+                new_va = va_base + (i << b)
+                new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                if is_riscv64():
+                    ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+                else:
+                    ppn = (entry >> 10) & 0x3fffff # 22 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                # make entry
+                virt_addr = new_va
+                phys_addr = ppn * gef_getpagesize()
+                page_size = 4 * 1024
+                page_count = 1
+                PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                entry_type = "4KB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L1 Entry (4KB): {:d}".format(len(PTE)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(PTE)))
+        self.PTE += PTE
+
+        self.quiet_add_out(titlify("Total"))
+        self.quiet_info("PT Entry (Total): {:d}".format(len(self.PTE)))
+        self.mappings = self.PTE
+        return
+
+    def pagewalk(self):
+        satp = get_register("satp")
+        if satp is None:
+            self.err("Failed to read $satp")
+            return
+        self.quiet_info("satp: {:#018x}".format(satp))
+
+        sstatus = get_register("sstatus")
+        if sstatus is None:
+            self.err("Failed to read $sstatus")
+            return
+        self.quiet_info("sstatus: {:#018x}".format(sstatus))
+
+        if is_riscv64():
+            mode = (satp >> 60) & 0b1111 # upper 4 bit
+            pagewalk_base = (satp & 0xFFFFFFFFFFF) * gef_getpagesize() # lower 44 bit
+        else:
+            mode = (satp >> 31) & 0b1 # upper 1 bit
+            pagewalk_base = (satp & 0x3FFFFF) * gef_getpagesize() # lower 22 bit
+        self.sstatus_sum = (sstatus >> 18) & 1
+
+        # virtual address base
+        va_base = 0
+        flags = []
+
+        # do pagewalk
+        self.PTE = []
+        self.TABLES = [(va_base, pagewalk_base, flags)]
+        self.flags_strings_cache = {}
+
+        if is_riscv64():
+            if mode == 0:
+                self.err("RV64 bare page table is unsupported")
+            elif mode == 11: # Sv64 is unsuppported
+                self.err("RV64 Sv64 page table is unsupported")
+            elif mode == 10: # Sv57
+                self.quiet_info("RV64 Sv57 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "L5_BITS": 9, "L4_BITS": 9, "L3_BITS": 9, "L2_BITS": 9, "L1_BITS": 9, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L5()
+                    self.pagewalk_L4()
+                    self.pagewalk_L3()
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+            elif mode == 9: # Sv48
+                self.quiet_info("RV64 Sv48 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "L4_BITS": 9, "L3_BITS": 9, "L2_BITS": 9, "L1_BITS": 9, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L4()
+                    self.pagewalk_L3()
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+            elif mode == 8: # Sv39
+                self.quiet_info("RV64 Sv39 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "L3_BITS": 9, "L2_BITS": 9, "L1_BITS": 9, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L3()
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+            else:
+                self.err("RV64 unknown mode")
+        else:
+            if mode == 0:
+                self.err("RV32 bare page table is unsupported")
+            elif mode == 1: # Sv32
+                self.quiet_info("RV32 Sv32 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 4,
+                    "L2_BITS": 10, "L1_BITS": 10, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+
+        self.flags_strings_cache = {}
+        self.make_out(self.mappings)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("RISCV32", "RISCV64"))
+    def do_invoke(self, args):
+        self.quiet = args.quiet
+        self.print_each_level = args.print_each_level
+        self.no_merge = args.no_merge
+        self.sort_by_phys = args.sort_by_phys
+        self.simple = args.simple
+        self.filter = args.filter
+        self.vrange = args.vrange.copy()
+        self.prange = args.prange.copy()
+        self.trace = args.trace.copy()
+        self.use_cache = args.use_cache
+
+        if self.trace:
+            self.vrange.extend(self.trace) # also set --vrange
+            self.print_each_level = True # overwrite
+            self.use_cache = False # overwrite
+
+        self.out = []
+        self.cache = {}
+        self.pagewalk()
+        self.cache = {}
+        self.print_output(args)
         return
 
 
 @register_command
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
+
     _cmdline_ = "pagewalk x64"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = ["pagewalk x86"]
@@ -76642,7 +80095,8 @@ class PagewalkX64Command(PagewalkCommand):
                         help="print userland pagetables (for KPTI, only x64, in kernel context).")
     parser.add_argument("--cr3", type=AddressUtil.parse_address, help="use specified value as cr3.")
     parser.add_argument("--cr4", type=AddressUtil.parse_address, help="use specified value as cr4.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("--ept", action="store_true", help="parse cr3 as EPT (Extended Page Table).")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
@@ -76659,20 +80113,27 @@ class PagewalkX64Command(PagewalkCommand):
             return x
 
         flags = []
-        if "NO_RW" in flag_info:
-            if "XD" in flag_info:
-                flags += ["R--"]
-            else:
-                flags += ["R-X"]
+        if self.ept:
+            perm = ""
+            perm += ["R", "-"]["NO_R" in flag_info]
+            perm += ["W", "-"]["NO_W" in flag_info]
+            perm += ["X", "-"]["NO_X" in flag_info]
+            flags += [perm]
         else:
-            if "XD" in flag_info:
-                flags += ["RW-"]
+            if "NO_RW" in flag_info:
+                if "XD" in flag_info:
+                    flags += ["R--"]
+                else:
+                    flags += ["R-X"]
             else:
-                flags += ["RWX"]
-        if "NO_US" in flag_info:
-            flags += ["KERN"]
-        else:
-            flags += ["USER"]
+                if "XD" in flag_info:
+                    flags += ["RW-"]
+                else:
+                    flags += ["RWX"]
+            if "NO_US" in flag_info:
+                flags += ["KERN"]
+            else:
+                flags += ["USER"]
 
         if not self.simple:
             if "A" in flag_info:
@@ -76707,14 +80168,24 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                if ((entry >> 1) & 1) == 0:
-                    flags.append("NO_RW")
-                if ((entry >> 2) & 1) == 0:
-                    flags.append("NO_US")
-                if ((entry >> 5) & 1) == 1:
-                    flags.append("A")
-                if ((entry >> 63) & 1) == 1:
-                    flags.append("XD")
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_W")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_X")
+                    if ((entry >> 8) & 1) == 1:
+                        flags.append("A")
+                else:
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1:
+                        flags.append("A")
+                    if ((entry >> 63) & 1) == 1:
+                        flags.append("XD")
 
                 # calc next table (drop the flag bits)
                 next_level_table = entry & 0x000ffffffffff000
@@ -76765,14 +80236,24 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                if ((entry >> 1) & 1) == 0:
-                    flags.append("NO_RW")
-                if ((entry >> 2) & 1) == 0:
-                    flags.append("NO_US")
-                if ((entry >> 5) & 1) == 1:
-                    flags.append("A")
-                if ((entry >> 63) & 1) == 1:
-                    flags.append("XD")
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_W")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_X")
+                    if ((entry >> 8) & 1) == 1:
+                        flags.append("A")
+                else:
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1:
+                        flags.append("A")
+                    if ((entry >> 63) & 1) == 1:
+                        flags.append("XD")
 
                 # calc next table (drop the flag bits)
                 next_level_table = entry & 0x000ffffffffff000
@@ -76823,18 +80304,30 @@ class PagewalkX64Command(PagewalkCommand):
                 # calc flags
                 flags = parent_flags.copy()
                 if is_x86_64():
-                    if ((entry >> 1) & 1) == 0:
-                        flags.append("NO_RW")
-                    if ((entry >> 2) & 1) == 0:
-                        flags.append("NO_US")
-                    if ((entry >> 5) & 1) == 1:
-                        flags.append("A")
-                    if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
-                        flags.append("D")
-                    if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
-                        flags.append("G")
-                    if ((entry >> 63) & 1) == 1:
-                        flags.append("XD")
+                    if self.ept:
+                        if ((entry >> 0) & 1) == 0:
+                            flags.append("NO_R")
+                        if ((entry >> 1) & 1) == 0:
+                            flags.append("NO_W")
+                        if ((entry >> 2) & 1) == 0:
+                            flags.append("NO_X")
+                        if ((entry >> 8) & 1) == 1:
+                            flags.append("A")
+                        if is_set_PS(entry) and ((entry >> 9) & 1) == 1:
+                            flags.append("D")
+                    else:
+                        if ((entry >> 1) & 1) == 0:
+                            flags.append("NO_RW")
+                        if ((entry >> 2) & 1) == 0:
+                            flags.append("NO_US")
+                        if ((entry >> 5) & 1) == 1:
+                            flags.append("A")
+                        if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
+                            flags.append("D")
+                        if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
+                            flags.append("G")
+                        if ((entry >> 63) & 1) == 1:
+                            flags.append("XD")
                 else: # x86_32 and PAE
                     pass
 
@@ -76904,18 +80397,30 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                if ((entry >> 1) & 1) == 0:
-                    flags.append("NO_RW")
-                if ((entry >> 2) & 1) == 0:
-                    flags.append("NO_US")
-                if ((entry >> 5) & 1) == 1:
-                    flags.append("A")
-                if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
-                    flags.append("D")
-                if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
-                    flags.append("G")
-                if self.PAE and ((entry >> 63) & 1) == 1:
-                    flags.append("XD")
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_W")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_X")
+                    if ((entry >> 8) & 1) == 1:
+                        flags.append("A")
+                    if is_set_PS(entry) and ((entry >> 9) & 1) == 1:
+                        flags.append("D")
+                else:
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1:
+                        flags.append("A")
+                    if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
+                        flags.append("D")
+                    if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
+                        flags.append("G")
+                    if self.PAE and ((entry >> 63) & 1) == 1:
+                        flags.append("XD")
 
                 # calc next table (drop the flag bits)
                 if is_x86_64() and is_set_PS(entry):
@@ -76989,27 +80494,39 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                # This route passes many times, so make a memo
-                entry_flags_key = entry & 0x8000000000000166
-                x = flag_cache.get(entry_flags_key, None)
-                if x is not None:
-                    flags.extend(x)
-                else:
-                    _flags = []
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
                     if ((entry >> 1) & 1) == 0:
-                        _flags.append("NO_RW")
+                        flags.append("NO_W")
                     if ((entry >> 2) & 1) == 0:
-                        _flags.append("NO_US")
-                    if ((entry >> 5) & 1) == 1:
-                        _flags.append("A")
-                    if ((entry >> 6) & 1) == 1:
-                        _flags.append("D")
+                        flags.append("NO_X")
                     if ((entry >> 8) & 1) == 1:
-                        _flags.append("G")
-                    if self.PAE and ((entry >> 63) & 1) == 1:
-                        _flags.append("XD")
-                    flag_cache[entry_flags_key] = _flags
-                    flags.extend(_flags)
+                        flags.append("A")
+                    if ((entry >> 9) & 1) == 1:
+                        flags.append("D")
+                else:
+                    # This route passes many times, so make a memo
+                    entry_flags_key = entry & 0x8000000000000166
+                    x = flag_cache.get(entry_flags_key, None)
+                    if x is not None:
+                        flags.extend(x)
+                    else:
+                        _flags = []
+                        if ((entry >> 1) & 1) == 0:
+                            _flags.append("NO_RW")
+                        if ((entry >> 2) & 1) == 0:
+                            _flags.append("NO_US")
+                        if ((entry >> 5) & 1) == 1:
+                            _flags.append("A")
+                        if ((entry >> 6) & 1) == 1:
+                            _flags.append("D")
+                        if ((entry >> 8) & 1) == 1:
+                            _flags.append("G")
+                        if self.PAE and ((entry >> 63) & 1) == 1:
+                            _flags.append("XD")
+                        flag_cache[entry_flags_key] = _flags
+                        flags.extend(_flags)
 
                 # calc physical addr (drop the flag bits)
                 phys_addr = entry & 0x000ffffffffff000
@@ -77181,6 +80698,15 @@ class PagewalkX64Command(PagewalkCommand):
             self.print_each_level = True # overwrite
             self.use_cache = False # overwrite
 
+        if args.ept:
+            if self.user_specified_cr3:
+                self.ept = args.ept
+            else:
+                err("Unsupported --ept option without --cr3 option.")
+                return
+        else:
+            self.ept = False
+
         self.out = []
         self.cache = {}
         self.pagewalk()
@@ -77192,6 +80718,7 @@ class PagewalkX64Command(PagewalkCommand):
 @register_command
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (only Cortex-A) using qemu-monitor. PL2 pagewalk is unsupported."""
+
     _cmdline_ = "pagewalk arm"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = ["pagewalk arm32"]
@@ -77212,7 +80739,7 @@ class PagewalkArmCommand(PagewalkCommand):
                         help="filter by map included specified physical address.")
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
@@ -77516,7 +81043,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     flags.append("XN")
                 flags.append("domain={:#x}".format((entry >> 5) & 0b1111))
                 ap = (((entry >> 15) & 1) << 2) + ((entry >> 10) & 0b11)
-                if self.AFE: # AP[2:1] access permissions model
+                if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                     flags.append("AP={:02b}".format(ap >> 1))
                 else: # AP[2:0] access permissions model
                     flags.append("AP={:03b}".format(ap))
@@ -77537,7 +81064,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 if ((entry >> 4) & 1) == 1:
                     flags.append("XN")
                 ap = (((entry >> 15) & 1) << 2) + ((entry >> 10) & 0b11)
-                if self.AFE: # AP[2:1] access permissions model
+                if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                     flags.append("AP={:02b}".format(ap >> 1))
                 else: # AP[2:0] access permissions model
                     flags.append("AP={:03b}".format(ap))
@@ -77626,7 +81153,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     if ((entry >> 3) & 1) == 1:
                         flags.append("C")
                     ap = (((entry >> 9) & 1) << 2) + ((entry >> 4) & 0b11)
-                    if self.AFE: # AP[2:1] access permissions model
+                    if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                         flags.append("AP={:02b}".format(ap >> 1))
                     else: # AP[2:0] access permissions model
                         flags.append("AP={:03b}".format(ap))
@@ -77645,7 +81172,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     if ((entry >> 3) & 1) == 1:
                         flags.append("C")
                     ap = (((entry >> 9) & 1) << 2) + ((entry >> 4) & 0b11)
-                    if self.AFE: # AP[2:1] access permissions model
+                    if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                         flags.append("AP={:02b}".format(ap >> 1))
                     else: # AP[2:0] access permissions model
                         flags.append("AP={:03b}".format(ap))
@@ -78119,14 +81646,14 @@ class PagewalkArmCommand(PagewalkCommand):
                 self.SECURE = False
             self.suffix = ""
 
-        # check XP, AFE
+        # check XP, AFE # codespell:ignore
         SCTLR = get_register("$SCTLR{}".format(self.suffix))
         if SCTLR is not None:
             self.XP = ((SCTLR >> 23) & 0x1) == 1
-            self.AFE = ((SCTLR >> 29) & 0x1) == 1
+            self.AFE = ((SCTLR >> 29) & 0x1) == 1 # codespell:ignore
         else:
             self.XP = False
-            self.AFE = False
+            self.AFE = False # codespell:ignore
 
         if not self.XP:
             self.quiet_info("VMSAv6 subpages is enabled")
@@ -78200,6 +81727,7 @@ class PagewalkArmCommand(PagewalkCommand):
 @register_command
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 (only Cortex-A; ARM v8.7 base) using qemu-monitor."""
+
     _cmdline_ = "pagewalk arm64"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = [] # re-overwrite
@@ -78220,7 +81748,7 @@ class PagewalkArm64Command(PagewalkCommand):
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
     parser.add_argument("--optee", action="store_true", help="show the secure world memory maps if used OP-TEE.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
@@ -79968,6 +83496,7 @@ class PagewalkArm64Command(PagewalkCommand):
 @register_command
 class SwitchELCommand(GenericCommand):
     """Switch EL (Exception Level) on ARM64 architecture."""
+
     _cmdline_ = "switch-el"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -80022,6 +83551,7 @@ class SwitchELCommand(GenericCommand):
 @register_command
 class PagewalkWithHintsCommand(GenericCommand):
     """Add hint to the result of pagewalk."""
+
     _cmdline_ = "pagewalk-with-hints"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -80709,6 +84239,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 @register_command
 class PageCommand(GenericCommand):
     """The base command for converting virtual addresses and physical addresses from page."""
+
     _cmdline_ = "page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81202,6 +84733,7 @@ class PageCommand(GenericCommand):
 @register_command
 class Page2VirtCommand(GenericCommand):
     """Transfer from page to virtual address (shortcut for `page to-virt ...`)."""
+
     _cmdline_ = "page2virt"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81225,6 +84757,7 @@ class Page2VirtCommand(GenericCommand):
 @register_command
 class Virt2PageCommand(GenericCommand):
     """Transfer from virtual address to page (shortcut for `page from-virt ...`)."""
+
     _cmdline_ = "virt2page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81248,6 +84781,7 @@ class Virt2PageCommand(GenericCommand):
 @register_command
 class Page2PhysCommand(GenericCommand):
     """Transfer from page to physical address (shortcut for `page to-phys ...`)."""
+
     _cmdline_ = "page2phys"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81271,6 +84805,7 @@ class Page2PhysCommand(GenericCommand):
 @register_command
 class Phys2PageCommand(GenericCommand):
     """Transfer from physical address to page (shortcut for `page from-phys ...`)."""
+
     _cmdline_ = "phys2page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81294,6 +84829,7 @@ class Phys2PageCommand(GenericCommand):
 @register_command
 class QemuDeviceInfoCommand(GenericCommand):
     """Dump device information for qemu-escape."""
+
     _cmdline_ = "qemu-device-info"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -81371,7 +84907,8 @@ class QemuDeviceInfoCommand(GenericCommand):
 
 @register_command
 class XUntilCommand(GenericCommand):
-    """Execute until specified address. It is slightly easier to use than the original until command."""
+    """Execute until specified address easily."""
+
     _cmdline_ = "xuntil"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81389,7 +84926,8 @@ class XUntilCommand(GenericCommand):
             stop_addr = Disasm.gef_instruction_n(current_arch.pc, 1).address
         else:
             stop_addr = args.address
-        # `until` command has a bug(?) because sometimes fail, so we should use `tbreak` and `continue` instead of `until`.
+        # `until` command has a bug(?) because sometimes fail,
+        # so we should use `tbreak` and `continue` instead of `until`.
         SimpleInternalTemporaryBreakpoint(loc=stop_addr)
         gdb.execute("c") # use c wrapper
         return
@@ -81398,6 +84936,7 @@ class XUntilCommand(GenericCommand):
 @register_command
 class ExecUntilCommand(GenericCommand):
     """The base command to execute until specific condition."""
+
     _cmdline_ = "exec-until"
     _category_ = "01-d. Debugging Support - Execution"
 
@@ -81669,6 +85208,7 @@ class ExecUntilCommand(GenericCommand):
 @register_command
 class ExecUntilCallCommand(ExecUntilCommand):
     """Execute until next call instruction."""
+
     _cmdline_ = "exec-until call"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81693,6 +85233,7 @@ class ExecUntilCallCommand(ExecUntilCommand):
 @register_command
 class ExecUntilJumpCommand(ExecUntilCommand):
     """Execute until next jmp instruction."""
+
     _cmdline_ = "exec-until jmp"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81732,6 +85273,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
 @register_command
 class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     """Execute until next indirect call/jmp instruction (only x64/x86)."""
+
     _cmdline_ = "exec-until indirect-branch"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81772,6 +85314,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
 @register_command
 class ExecUntilAllBranchCommand(ExecUntilCommand):
     """Execute until next call/jump/ret instruction."""
+
     _cmdline_ = "exec-until all-branch"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81811,6 +85354,7 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
 @register_command
 class ExecUntilSyscallCommand(ExecUntilCommand):
     """Execute until next syscall instruction."""
+
     _cmdline_ = "exec-until syscall"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81850,6 +85394,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
 @register_command
 class ExecUntilRetCommand(ExecUntilCommand):
     """Execute until next ret instruction."""
+
     _cmdline_ = "exec-until ret"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81874,6 +85419,7 @@ class ExecUntilRetCommand(ExecUntilCommand):
 @register_command
 class ExecUntilMemaccessCommand(ExecUntilCommand):
     """Execute until next mem-access instruction."""
+
     _cmdline_ = "exec-until memaccess"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81898,6 +85444,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
 @register_command
 class ExecUntilKeywordReCommand(ExecUntilCommand):
     """Execute until specified keyword instruction."""
+
     _cmdline_ = "exec-until keyword"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -81938,6 +85485,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
 @register_command
 class ExecUntilCondCommand(ExecUntilCommand):
     """Execute until specified condition is filled."""
+
     _cmdline_ = "exec-until cond"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82000,6 +85548,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
 @register_command
 class ExecUntilUserCodeCommand(ExecUntilCommand):
     """Execute until next user-code instruction."""
+
     _cmdline_ = "exec-until user-code"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82050,6 +85599,7 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
 @register_command
 class ExecUntilLibcCodeCommand(ExecUntilCommand):
     """Execute until next libc instruction."""
+
     _cmdline_ = "exec-until libc-code"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82096,6 +85646,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
 @register_command
 class ExecUntilSecureWorldCommand(ExecUntilCommand):
     """Execute until next secure-world instruction (only ARM/ARM64)."""
+
     _cmdline_ = "exec-until secure-world"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82138,6 +85689,7 @@ class ExecUntilSecureWorldCommand(ExecUntilCommand):
 
 class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print argv information at call_usermodehelper_setup."""
+
     def __init__(self, loc):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         return
@@ -82162,6 +85714,7 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
 @register_command
 class UsermodehelperTracerCommand(GenericCommand):
     """Collect and display information that is executed by call_usermodehelper_setup."""
+
     _cmdline_ = "usermodehelper-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -82186,6 +85739,7 @@ class UsermodehelperTracerCommand(GenericCommand):
 
 class ThunkBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print caller address for thunk function."""
+
     def __init__(self, loc, sym, reg, maps):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.loc = loc
@@ -82255,6 +85809,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
 @register_command
 class ThunkTracerCommand(GenericCommand):
     """Collect and display the thunk addresses that are called automatically (only x64/x86)."""
+
     _cmdline_ = "thunk-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -82285,6 +85840,7 @@ class ThunkTracerCommand(GenericCommand):
 
 class KmallocBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print information of kmalloc."""
+
     def __init__(self, loc, sym, index_of_size_arg, task, option, extra):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.sym = sym
@@ -82318,6 +85874,7 @@ class KmallocBreakpoint(gdb.Breakpoint):
 
 class KmallocRetBreakpoint(gdb.FinishBreakpoint):
     """Create a breakpoint to print information of kmalloc."""
+
     def __init__(self, size, sym, option, extra):
         super().__init__(gdb.newest_frame(), internal=True)
         # gdb.FinishBreakpoint detects that it is desired task or not, from frame information
@@ -82340,7 +85897,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
         loc_s = Color.colorify_hex(loc, Config.get_gef_setting("theme.heap_chunk_address_used"))
 
         if self.extra:
-            ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
+            ret = KmallocTracerCommand.virt2name_and_size(loc)
             if ret:
                 # print more info
                 name, chunk_size = ret
@@ -82365,6 +85922,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
 
 class KfreeBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print information of kfree."""
+
     def __init__(self, loc, sym, index_of_addr_arg, task, option, extra):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.sym = sym
@@ -82390,7 +85948,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
         loc_s = Color.colorify_hex(loc, Config.get_gef_setting("theme.heap_chunk_address_freed"))
 
         if self.extra:
-            ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
+            ret = KmallocTracerCommand.virt2name_and_size(loc)
             if ret:
                 # print more info
                 name, chunk_size = ret
@@ -82416,6 +85974,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
 @register_command
 class KmallocTracerCommand(GenericCommand):
     """Collect and display information when kmalloc/kfree."""
+
     _cmdline_ = "kmalloc-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -82455,8 +86014,7 @@ class KmallocTracerCommand(GenericCommand):
     def initialize(allocator, verbose):
         if allocator != "SLUB":
             # Do nothing other than SLUB.
-            extra_info = None
-            return extra_info
+            return None
 
         res = gdb.execute("slub-dump --meta", to_string=True)
 
@@ -82503,7 +86061,7 @@ class KmallocTracerCommand(GenericCommand):
         return 0, ""
 
     @staticmethod
-    def virt2name_and_size(extra, vaddr):
+    def virt2name_and_size(vaddr):
         ret = Kernel.get_slab_contains(vaddr)
         if not ret:
             return None
@@ -82546,68 +86104,91 @@ class KmallocTracerCommand(GenericCommand):
         # Since `kmalloc` is always inlined and not exported, so the symbol cannot be determined.
         # So put a breakpoint in each non-inlined function called from kmalloc.
         """
-        (1) static __always_inline void *kmalloc(size_t size, gfp_t flags)
-            - [~v6.1]
-                - static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
-                    - [CONFIG_TRACING=n]
-                        - static __always_inline void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
-                            - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order) <-- bp here
-                    - [CONFIG_TRACING=y]
-                        - void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
-                            - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order) <-- bp here
-                - [CONFIG_TRACING=y]
-                    - void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size) <-- bp here
-                - [CONFIG_TRACING=n]
-                    - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
-                        - void *kmem_cache_alloc(struct kmem_cache *s, gfp_t flags) <-- bp here
+        (1) kmalloc
+            - [~6.0]
+                - static __always_inline void *kmalloc(size_t size, gfp_t flags)
+                    - kmalloc_large
+                        - [CONFIG_TRACING=n]
+                            - static __always_inline void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
+                                - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order)
+                        - [CONFIG_TRACING=y]
+                            - void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
+                                - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order)
+                    - kmem_cache_alloc_trace
+                        - [CONFIG_TRACING=y]
+                            - void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                        - [CONFIG_TRACING=n]
+                            - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                                - void *kmem_cache_alloc(struct kmem_cache *s, gfp_t flags)
+                    - __kmalloc
+                        - void *__kmalloc(size_t size, gfp_t flags)
+            - [6.1~6.9]
+                - static __always_inline void *kmalloc(size_t size, gfp_t flags)
+                    - void *kmalloc_large(size_t size, gfp_t flags)
+                    - void *kmalloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                    - void *__kmalloc(size_t size, gfp_t flags)
+            - [6.10~]
+                - static __always_inline void *kmalloc_noprof(size_t size, gfp_t flags)
+                    - void *kmalloc_large_noprof(size_t size, gfp_t flags)
+                    - void *kmalloc_trace_noprof(struct kmem_cache *s, gfp_t gfpflags, size_t size)
+                    - void *__kmalloc_noprof(size_t size, gfp_t flags)
 
-            - [v6.1~]
-                - void *kmalloc_large(size_t size, gfp_t flags) <-- bp here
-                - void *kmalloc_trace(struct kmem_cache *s, gfp_t flags, size_t size) <-- bp here
+        (2) kmalloc_node
+            - [~6.0]
+                - static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
+                    - kmem_cache_alloc_node_trace
+                        - [CONFIG_TRACING=y && CONFIG_NUMA=y]
+                            - void *kmem_cache_alloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
+                        - [CONFIG_TRACING=y && CONFIG_NUMA=n]
+                            - void *kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp_t flags, size_t size)
+                        - [CONFIG_TRACING=n && CONFIG_NUMA=y]
+                            - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                                - void *kmem_cache_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid)
+                        - [CONFIG_TRACING=n && CONFIG_NUMA=n]
+                            - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                                - static __always_inline void *kmem_cache_alloc_node(struct kmem_cache *s, gfp_t flags, int node)
+                                    - void *kmem_cache_alloc(struct kmem_cache *s, gfp_t flags)
+                    - __kmalloc_node
+                        - [CONFIG_NUMA=y]
+                            void *__kmalloc_node(size_t size, gfp_t flags, int node)
+                        - [CONFIG_NUMA=n]
+                            - void *__kmalloc(size_t size, gfp_t flags)
+            - [6.1~6.9]
+                - static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_large_node(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
+                    - void *__kmalloc_node(size_t size, gfp_t flags, int node)
+            - [6.10~]
+                - static __always_inline void *kmalloc_node_noprof(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_large_node_noprof(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_node_trace_noprof(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
+                    - void *__kmalloc_node_noprof(size_t size, gfp_t flags, int node)
 
-            - void *__kmalloc(size_t size, gfp_t flags) <-- bp here
+        (3) kmemdup, etc.
+            - void *kmemdup(const void *src, size_t len, gfp_t gfp)
+                - [~6.0]
+                    - void *__kmalloc_track_caller(size_t size, gfp_t flags, unsigned long caller)
+                - [6.1~6.9]
+                    - void *__kmalloc_node_track_caller(size_t size, gfp_t flags, int node, unsigned long caller)
+                - [6.10~]
+                    - void *kmalloc_node_track_caller_noprof(size_t size, gfp_t flags, int node, unsigned long caller)
 
-        (2) static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
-            - [~v6.1]
-                - [CONFIG_NUMA=n]
-                    - redirect to kmem_cache_alloc_trace
-                - [CONFIG_TRACING=y]
-                    - void *kmem_cache_alloc_node_trace(struct kmem_cache *s, gfp_t flags, int node, size_t size) <-- bp here
-                - [CONFIG_TRACING=n && CONFIG_NUMA=n]
-                    - redirect to kmem_cache_alloc
-                - [CONFIG_TRACING=n && CONFIG_NUMA=y]
-                    - static __always_inline void *kmem_cache_alloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
-                        - void *kmem_cache_alloc_node(struct kmem_cache *s, gfp_t flags, int node) <-- bp here
+        (4) krealloc
+            - [~6.9]
+                - void *krealloc(const void *p, size_t new_size, gfp_t flags)
+            - [6.10~]
+                - void *krealloc_noprof(const void *p, size_t new_size, gfp_t flags)
 
-            - [v6.1~]
-                - void *kmalloc_node_trace(struct kmem_cache *s, gfp_t flags, int node, size_t size) <-- bp here
-
-            - [CONFIG_NUMA=n]
-                - redirect to __kmalloc
-            - [CONFIG_NUMA=y]
-                void *__kmalloc_node(size_t size, gfp_t flags, int node) <-- bp here
-
-        (3) void *memdup_user(const void __user *src, size_t len), etc.
-            - void *__kmalloc_track_caller(size_t size, gfp_t flags, unsigned long caller) <-- bp here
-
-        (4) void *krealloc(const void *p, size_t new_size, gfp_t flags) <-- bp here
-
-        (5) void kfree(const void *object) <-- bp here
-
-        (Other)
-        * kmalloc_array -> kmalloc or __kmalloc
-        * kmalloc_array_node -> kmalloc_node or __kmalloc_node
-        * krealloc_array -> krealloc
-        * kcalloc -> kmalloc_array
-        * kcalloc_node -> kmalloc_array_node
-        * kzalloc -> kmalloc
-        * kzalloc_node -> kmalloc_node
+        (5) kfree
+            - void kfree(const void *object)
         """
 
         kversion = Kernel.kernel_version()
+
+        # This list may be incomplete.
+        # If you know of any memory-allocating functions that may be freed with kfree, please let us know.
         if kversion < "6.1":
-            # number is the argument index of the size.
-            # -1 means index 0 is `struct kmem_cache*`.
+            # The number is the argument index of the size. -1 means index 0 is `struct kmem_cache*`.
             kmalloc_syms = [
                 # for kmalloc
                 [0, "kmalloc_order"],
@@ -82618,24 +86199,40 @@ class KmallocTracerCommand(GenericCommand):
                 [3, "kmem_cache_alloc_node_trace"],
                 [-1, "kmem_cache_alloc_node"],
                 [0, "__kmalloc_node"],
-                # for memdup_user, etc.
+                # for kmemdup, etc.
                 [0, "__kmalloc_track_caller"],
                 # for krealloc
                 [1, "krealloc"],
             ]
-        else:
+        elif kversion < "6.10":
             kmalloc_syms = [
                 # for kmalloc
                 [0, "kmalloc_large"],
                 [2, "kmalloc_trace"],
                 [0, "__kmalloc"],
                 # for kmalloc_node
+                [0, "kmalloc_large_node"],
                 [3, "kmalloc_node_trace"],
                 [0, "__kmalloc_node"],
-                # for memdup_user, etc.
-                [0, "__kmalloc_track_caller"],
+                # for kmemdup, etc.
+                [0, "__kmalloc_node_track_caller"],
                 # for krealloc
                 [1, "krealloc"],
+            ]
+        else: # >= 6.10
+            kmalloc_syms = [
+                # for kmalloc
+                [0, "kmalloc_large_noprof"],
+                [2, "kmalloc_trace_noprof"],
+                [0, "__kmalloc_noprof"],
+                # for kmalloc_node
+                [0, "kmalloc_large_node_noprof"],
+                [3, "kmalloc_node_trace_noprof"],
+                [0, "__kmalloc_node_noprof"],
+                # for kmemdup, etc.
+                [0, "kmalloc_node_track_caller_noprof"],
+                # for krealloc
+                [1, "krealloc_noprof"],
             ]
 
         kfree_syms = [
@@ -82665,11 +86262,9 @@ class KmallocTracerCommand(GenericCommand):
     @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
-        # create option_info
-        option_info = KmallocTracerCommand.create_option_info(args)
+        info("Wait for memory scan")
 
         # initialize
-        info("Wait for memory scan")
         allocator = KernelChecksecCommand.get_slab_type()
         if allocator != "SLUB":
             warn("Unsupported viewing detailed information for SLAB, SLOB, SLUB_TINY")
@@ -82687,6 +86282,9 @@ class KmallocTracerCommand(GenericCommand):
                 info("offsetof(page, slab_cache): {:#x}".format(self.extra_info.page_offset_slab_cache))
                 info("offsetof(kmem_cache, name): {:#x}".format(self.extra_info.kmem_cache_offset_name))
                 info("offsetof(kmem_cache, size): {:#x}".format(self.extra_info.kmem_cache_offset_size))
+
+        # create option_info
+        option_info = KmallocTracerCommand.create_option_info(args)
 
         # set kmalloc break points
         breakpoints = KmallocTracerCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info)
@@ -82706,6 +86304,7 @@ class KmallocTracerCommand(GenericCommand):
 
 class KmallocAllocatedBy_UserlandHardwareBreakpoint(gdb.Breakpoint):
     """Breakpoint to userland `sleep` process for KmallocAllocatedByCommand."""
+
     def __init__(self, loc):
         super().__init__("*{:#x}".format(loc), gdb.BP_HARDWARE_BREAKPOINT, internal=False)
         self.silent = True
@@ -82718,6 +86317,7 @@ class KmallocAllocatedBy_UserlandHardwareBreakpoint(gdb.Breakpoint):
 @register_command
 class KmallocAllocatedByCommand(GenericCommand):
     """Call a predefined set of system calls and print structures allocated by kmalloc or freed by kfree (only x64)."""
+
     _cmdline_ = "kmalloc-allocated-by"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -82733,6 +86333,7 @@ class KmallocAllocatedByCommand(GenericCommand):
     _example_ += "{:s} -dtv    # useful output".format(_cmdline_)
 
     _note_ = "Disable `-enable-kvm` option for qemu-system (#PF may occur).\n"
+    _note_ += "Disable `-smp N` option for qemu-system (write memory error may occur).\n"
     _note_ += "Append `tsc=unstable` option for kernel cmdline.\n"
     _note_ += "This command needs CONFIG_RANDSTRUCT=n."
 
@@ -83708,7 +87309,10 @@ class KmallocAllocatedByCommand(GenericCommand):
                 sring_sz = params[16] + params[0] * 4    # sq_off.array + sq_entries * sizeof(uint)
                 cring_sz = params[25] + params[1] * 0x10 # cq_off.cqes + cq_entries * sizeof(struct io_uring_cqe)
                 sring_sz = max(sring_sz, cring_sz)
-                yield ("mmap(0, sring_sz, RW-, MAP_SHARED|MAP_POPULATE, ring_fd, IORING_OFF_SQ_RING)", "mmap", [0, sring_sz, 3, 0x1 | 0x8000, ring_fd, 0])
+                yield (
+                    "mmap(0, sring_sz, RW-, MAP_SHARED|MAP_POPULATE, ring_fd, IORING_OFF_SQ_RING)",
+                    "mmap", [0, sring_sz, 3, 0x1 | 0x8000, ring_fd, 0],
+                )
                 if u2i(ret_history[-1]) >= 0:
                     sq_ptr = ret_history[-1]
                     yield ("io_uring_enter(ring_fd, 0, 0, 0, NULL, 8)", "io_uring_enter", [ring_fd, 0, 0, 0, 0, 8])
@@ -83972,12 +87576,23 @@ class KmallocAllocatedByCommand(GenericCommand):
         self.setup_syscall("exit", [0])
         return
 
+    def cleanup(self, hwbp, breakpoints):
+        # clean up
+        hwbp.delete()
+        for bp in breakpoints:
+            bp.delete()
+        gdb.execute("context on")
+        info("Exiting `sleep` process... (Please issue Ctrl+C)")
+        gdb.execute("continue")
+        return
+
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("x86_64",))
     @only_if_in_kernel
     @only_if_kvm_disabled
+    @only_if_smp_disabled
     def do_invoke(self, args):
         # create option_info
         option_info = KmallocTracerCommand.create_option_info(args)
@@ -84025,7 +87640,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         # get rsp for checking process
         r1 = re.search(r"rip\s*: (0x\S+)", res)
         r2 = re.search(r"rsp\s*: (0x\S+)", res)
-        if not r or not r2:
+        if not r1 or not r2:
             err("Failed to get rip and rsp.")
             return
         rip_of_sleep = int(r1.group(1), 16)
@@ -84046,27 +87661,24 @@ class KmallocAllocatedByCommand(GenericCommand):
         # here, stop in userland `sleep` process
         if current_arch.sp != rsp_of_sleep:
             err("Stack pointer is different from expected. Unable to continue.")
+            self.cleanup(hwbp, breakpoints)
             return
         # rsp align
         gdb.execute("set $rsp = {:#x}".format(rsp_of_sleep & ~0xf))
+        # For some reason, setting rsp can break rip. Here's a workaround for that.
+        gdb.execute("set $rip = {:#x}".format(rip_of_sleep))
 
         # do test
         self.test_syscall(breakpoints)
-
-        # clean up
         info("Syscall test is complete, cleaning up...")
-        hwbp.delete()
-        for bp in breakpoints:
-            bp.delete()
-        gdb.execute("context on")
-        info("Exiting `sleep` process... (Please issue Ctrl+C)")
-        gdb.execute("continue")
+        self.cleanup(hwbp, breakpoints)
         return
 
 
 @register_command
 class UefiOvmfInfoCommand(GenericCommand):
     """Print UEFI OVMF info."""
+
     # https://github.com/tianocore/tianocore.github.io/wiki/OVMF-Boot-Overview
     # https://github.com/tianocore/edk2/blob/master/OvmfPkg/Sec/SecMain.c
     # https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Core/Pei/PeiMain/PeiMain.c
@@ -84564,6 +88176,7 @@ class UefiOvmfInfoCommand(GenericCommand):
 @register_command
 class AddSymbolTemporaryCommand(GenericCommand):
     """Add symbol from command temporarily."""
+
     _cmdline_ = "add-symbol-temporary"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -84599,11 +88212,11 @@ class AddSymbolTemporaryCommand(GenericCommand):
             # When adding symbols, it is not necessary to match the architecture of the ELF to be created
             # and the architecture of the debugged kernel. Regardless of the architecture of the kernel
             # you are debugging, create an ELF using gcc in the host environment.
-            os.system("{:s} '{:s}' -no-pie -o '{:s}'".format(gcc, fname, blank_elf))
+            os.system("{!r} {!r} -no-pie -o {!r}".format(gcc, fname, blank_elf))
             os.unlink(fname)
             # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
-            os.system("{:s} --only-keep-debug '{:s}'".format(objcopy, blank_elf))
-            os.system("{:s} --strip-all '{:s}'".format(objcopy, blank_elf))
+            os.system("{!r} --only-keep-debug {!r}".format(objcopy, blank_elf))
+            os.system("{!r} --strip-all {!r}".format(objcopy, blank_elf))
             elf = Elf.get_elf(blank_elf)
             for s in elf.shdrs:
                 if s.sh_name == "": # null, skip
@@ -84620,7 +88233,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
                     continue
                 if s.sh_name == ".bss": # broken if remove
                     continue
-                os.system("{:s} --remove-section='{:s}' '{:s}' 2>/dev/null".format(
+                os.system("{!r} --remove-section={!r} {!r} 2>/dev/null".format(
                     objcopy, s.sh_name, blank_elf,
                 ))
         else:
@@ -84674,7 +88287,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             elf = Elf.get_elf(blank_elf)
 
         # fix .text base address
-        os.system("{:s} --change-section-address .text={:#x} '{:s}' 2>/dev/null".format(
+        os.system("{!r} --change-section-address .text={:#x} {!r} 2>/dev/null".format(
             objcopy, text_base, blank_elf,
         ))
 
@@ -84735,7 +88348,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
 
         # embedding symbols
         relative_addr = args.function_start - text_base
-        os.system("{:s} --add-symbol '{:s}'=.text:{:#x},global,function '{}' 2>/dev/null".format(
+        os.system("{!r} --add-symbol {!r}=.text:{:#x},global,function {!r} 2>/dev/null".format(
             objcopy, args.function_name, relative_addr, sym_elf,
         ))
 
@@ -84743,7 +88356,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             info("1 entries were processed")
 
         # add symbol to gdb
-        gdb.execute("add-symbol-file {:s} {:#x}".format(sym_elf, text_base), to_string=True)
+        gdb.execute("add-symbol-file {!r} {:#x}".format(sym_elf, text_base), to_string=True)
         os.unlink(sym_elf)
         return
 
@@ -84751,6 +88364,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
 @register_command
 class KsymaddrRemoteApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory."""
+
     _cmdline_ = "ksymaddr-remote-apply"
     _category_ = "08-c. Qemu-system Cooperation - Linux Symbol"
     _aliases_ = ["ks-apply"]
@@ -84861,6 +88475,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 @register_command
 class WalkLinkListCommand(GenericCommand, BufferingOutput):
     """Walk the link list."""
+
     _cmdline_ = "walk-link-list"
     _category_ = "03-b. Memory - View"
     _aliases_ = ["chain", "print-list"]
@@ -84893,7 +88508,7 @@ class WalkLinkListCommand(GenericCommand, BufferingOutput):
         idx = 1
         while True:
             try:
-                flink = read_int_from_memory(current + offset)
+                flink = read_int_from_memory(AddressUtil.align_address(current + offset))
             except gdb.MemoryError:
                 self.err("memory corrupted")
                 return
@@ -84943,6 +88558,7 @@ class WalkLinkListCommand(GenericCommand, BufferingOutput):
 @register_command
 class PeekPointersCommand(GenericCommand):
     """Find pointers belonging to other memory regions."""
+
     _cmdline_ = "peek-pointers"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["leakfind"]
@@ -85035,8 +88651,304 @@ class PeekPointersCommand(GenericCommand):
 
 
 @register_command
+class PeekPageFrameCommand(GenericCommand):
+    """Read page frame data from a single address or an address range."""
+
+    _cmdline_ = "peek-pageframe"
+    _category_ = "03-f. Memory - Investigation"
+    _aliases_ = ["ppf"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
+                        help="address for which the pfn is read.")
+    parser.add_argument("-f", "--from-addr", type=AddressUtil.parse_address, help="start of range.")
+    parser.add_argument("-t", "--to-addr", type=AddressUtil.parse_address, help="end of range.")
+    parser.add_argument("-i", "--ignore-non-present", action="store_true",
+                        help="ignores pages which are not present in the output.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x555555555060                        # read pagemap of single address\n".format(_cmdline_)
+    _example_ += "{:s} -f 0x7ffffffdd000 -t 0x7ffffffff000   # read pagemap of an address range".format(_cmdline_)
+
+    ENTRY_SIZE = 8
+
+    def get_bit(self, x, bit):
+        return (x >> bit) & 1
+
+    def get_pfn(self, x):
+        return x & 0x7FFFFFFFFFFFFF
+
+    def append_pfn_zero_warn(self):
+        warn_messages = [
+            Color.yellowify("Pages are present but the PFN field is zeroed out"),
+            Color.yellowify("Since kernel 4.0 only users with the CAP_SYS_ADMIN capability can get PFNs"),
+            Color.yellowify("In kernel versions 4.2+ the PFN field is zeroed if the user does not have CAP_SYS_ADMIN"),
+            Color.yellowify("Consider running gdb as root/sudo or adding the CAP_SYS_ADMIN capability to gdb via setcap\n"),
+        ]
+        self.out = warn_messages + self.out
+        return
+
+    def read_pagemap_with_virt_address(self, address, pid):
+        page_size = gef_getpagesize()
+        file_offset = (address // page_size) * self.ENTRY_SIZE
+        path = "/proc/{:d}/pagemap".format(pid)
+
+        try:
+            with open(path, "rb") as file:
+                file.seek(file_offset)
+                return file.read(8)
+        except FileNotFoundError:
+            err("Opening {:s} failed! Could not find file".format(path))
+        except OSError as e:
+            if e.errno == 1: # 1 = EPERM
+                err("No permission to open the pagemap file")
+                err("Only users with the CAP_SYS_ADMIN capability can get PFNs")
+                err("In kernel versions 4.0 and 4.1 unprivileged opens fail with -EPERM")
+            else:
+                err("Opening {:s} failed!".format(path))
+        return None
+
+    def get_pagemap_entry(self, address, pid):
+        entry_bytes = self.read_pagemap_with_virt_address(address, pid)
+
+        if entry_bytes is None or len(entry_bytes) < 8:
+            err("Reading pagemap entry for address {:#x} wasn't successful".format(address))
+            return None
+
+        entry = struct.unpack("Q", entry_bytes)[0]
+        pfn = self.get_pfn(entry)
+
+        data = {
+            "address": address,
+            "pfn": pfn,
+            "entry": entry,
+            "present": self.get_bit(entry, 63),
+            "swapped": self.get_bit(entry, 62),
+            "file_mapped": self.get_bit(entry, 61),
+            "uffd_wp": self.get_bit(entry, 57),
+            "exclusive": self.get_bit(entry, 56),
+            "soft_dirty": self.get_bit(entry, 55),
+        }
+        return data
+
+    def handle_address(self, address, pid):
+        data = self.get_pagemap_entry(address, pid)
+        if data is None:
+            return
+
+        present = data["present"]
+        swapped = data["swapped"]
+        file_mapped = data["file_mapped"]
+        uffd_wp = data["uffd_wp"]
+        exclusive = data["exclusive"]
+        soft_dirty = data["soft_dirty"]
+
+        if self.ignore_non_present and not present:
+            self.out.append("Non-present page is ignored")
+            return
+
+        pfn = data["pfn"]
+        if pfn == 0 and present:
+            # Show the warning message only once
+            if not getattr(self, "pfn_zero_warned", False):
+                self.append_pfn_zero_warn()
+                self.pfn_zero_warned = True
+
+        green_yes = Color.greenify("yes")
+        red_no = Color.redify("no")
+
+        self.out.append("present:            {:s}".format(green_yes if present else red_no))
+        self.out.append("swapped:            {:s}".format(green_yes if swapped else red_no))
+        self.out.append("file-mapped:        {:s}".format(green_yes if file_mapped else red_no))
+        self.out.append("soft-dirty:         {:s}".format(green_yes if soft_dirty else red_no))
+        self.out.append("exclusively-mapped: {:s}".format(green_yes if exclusive else red_no))
+        self.out.append("uffd-wp:            {:s}".format(green_yes if uffd_wp else red_no))
+
+        if present:
+            self.out.append(Color.boldify("PFN:                {:#x}").format(pfn))
+        return
+
+    def handle_address_range(self, from_addr, to_addr, pid):
+        page_size = gef_getpagesize()
+        start_page = from_addr // page_size
+        end_page = to_addr // page_size
+
+        for page_num in range(start_page, end_page + 1):
+            address = page_num * page_size
+            data = self.get_pagemap_entry(address, pid)
+
+            if data is None:
+                continue
+
+            if self.ignore_non_present and not data["present"]:
+                continue
+
+            pfn = data["pfn"]
+            if pfn == 0 and data["present"]:
+                # Show the warning message only once
+                if not getattr(self, "pfn_zero_warned", False):
+                    self.append_pfn_zero_warn()
+                    self.pfn_zero_warned = True
+
+            flags = []
+            flags.append("P" if data["present"] else "-")
+            flags.append("S" if data["swapped"] else "-")
+            flags.append("F" if data["file_mapped"] else "-")
+            flags.append("D" if data["soft_dirty"] else "-")
+            flags.append("E" if data["exclusive"] else "-")
+            flags.append("U" if data["uffd_wp"] else "-")
+            flags_str = "".join(flags)
+
+            if data["pfn"] != 0:
+                pfn_str = "{:#x}".format(data["pfn"])
+            else:
+                pfn_str = "0x0"
+            self.out.append("{:#018x} {:>8} {:s}".format(data["address"], pfn_str, flags_str))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        pid = Pid.get_pid()
+        if pid is None:
+            err("Failed to read pid")
+            return
+
+        self.ignore_non_present = args.ignore_non_present
+
+        self.out = []
+        if args.address is not None:
+            self.handle_address(args.address, pid)
+        elif args.from_addr is not None and args.to_addr is not None:
+            self.handle_address_range(args.from_addr, args.to_addr, pid)
+        else:
+            err("You must provide either a single address or both --from-addr and --to-addr")
+            return
+
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class PeekPageFlagsCommand(GenericCommand):
+    """Read the page flags of a page frame (needs root)."""
+
+    _cmdline_ = "peek-pageflags"
+    _category_ = "03-f. Memory - Investigation"
+    _aliases_ = ["ppfl"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("pfn", metavar="PFN", type=AddressUtil.parse_address,
+                        help="pfn of which to read flags")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x6b2ae3".format(_cmdline_)
+
+    class KPageFlags:
+        FLAGS = {
+            "LOCKED":        1 << 0,
+            "ERROR":         1 << 1,
+            "REFERENCED":    1 << 2,
+            "UPTODATE":      1 << 3, # codespell:ignore
+            "DIRTY":         1 << 4,
+            "LRU":           1 << 5,
+            "ACTIVE":        1 << 6,
+            "SLAB":          1 << 7,
+            "WRITEBACK":     1 << 8,
+            "RECLAIM":       1 << 9,
+            "BUDDY":         1 << 10,
+            "MMAP":          1 << 11,
+            "ANON":          1 << 12,
+            "SWAPCACHE":     1 << 13,
+            "SWAPBACKED":    1 << 14,
+            "COMPOUND_HEAD": 1 << 15,
+            "COMPOUND_TAIL": 1 << 16,
+            "HUGE":          1 << 17,
+            "UNEVICTABLE":   1 << 18,
+            "HWPOISON":      1 << 19,
+            "NOPAGE":        1 << 20,
+            "KSM":           1 << 21,
+            "THP":           1 << 22,
+            "OFFLINE":       1 << 23,
+            "ZERO_PAGE":     1 << 24,
+            "IDLE":          1 << 25,
+            "PGTABLE":       1 << 26,
+        }
+
+        def __init__(self, value):
+            self.value = value
+
+        def get_flag(self):
+            return self.value
+
+        def get_set_flags(self):
+            return [flag for flag, bit in self.FLAGS.items() if self.value & bit]
+
+    def read_file(self, path, pfn):
+        try:
+            with open(path, "rb") as f:
+                f.seek(pfn * 8)
+                data = f.read(8)
+                if len(data) == 8:
+                    return struct.unpack("Q", data)[0]
+                else:
+                    raise ValueError("Could not read kpagecount for PFN {:#x}".format(pfn))
+        except FileNotFoundError:
+            err("Could not open {:s}".format(path))
+        except PermissionError:
+            err("No permissions to read {:s}".format(path))
+            err("Only the owner of {:s} (root) is able to read it, rerun gdb with proper permissions".format(path))
+        except Exception as e:
+            err("Error reading kpagecount: {}".format(e))
+        return None
+
+    def read_kpagecount(self, pfn):
+        path = "/proc/kpagecount"
+        return self.read_file(path, pfn)
+
+    def read_kpageflags(self, pfn):
+        path = "/proc/kpageflags"
+        return self.read_file(path, pfn)
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        if args.pfn is None:
+            err("You must provide a PFN")
+            return
+
+        pfn = args.pfn
+
+        count = self.read_kpagecount(pfn)
+        if count is None:
+            return
+
+        flags_value = self.read_kpageflags(pfn)
+        if flags_value is None:
+            return
+
+        flags = self.KPageFlags(flags_value)
+        set_flags = flags.get_set_flags()
+
+        output = []
+        output.append("/proc/kpagecount: {:d}".format(count))
+        output.append("Pageflags: {:#x}".format(flags.get_flag()))
+        output.append("Flags:")
+        for flag in set_flags:
+            output.append("  {:s}".format(flag))
+
+        gef_print("\n".join(output), less=not args.no_pager)
+        return
+
+
+@register_command
 class StackFrameCommand(GenericCommand):
     """Display the entire stack of the current frame."""
+
     _cmdline_ = "stack-frame"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -85096,6 +89008,7 @@ class StackFrameCommand(GenericCommand):
 @register_command
 class XRefTelescopeCommand(SearchPatternCommand):
     """Recursively search for cross-references to a pattern in memory."""
+
     _cmdline_ = "xref-telescope"
     _category_ = "03-a. Memory - Search"
     _repeat_ = False # re-overwrite
@@ -85179,6 +89092,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
 @register_command
 class BytearrayCommand(GenericCommand):
     """Generate a bytearray to be compared with possible badchars (ported from mona.py)."""
+
     _cmdline_ = "bytearray"
     _category_ = "09-c. Misc - Generation"
 
@@ -85272,6 +89186,7 @@ class BytearrayCommand(GenericCommand):
 @register_command
 class FiletypeMemoryCommand(GenericCommand):
     """Scan memory by file and magika."""
+
     _cmdline_ = "filetype-memory"
     _category_ = "03-f. Memory - Investigation"
 
@@ -85313,16 +89228,16 @@ class FiletypeMemoryCommand(GenericCommand):
         open(filepath, "wb").write(data)
 
         try:
-            gef_print(titlify("file {:s}".format(filepath)))
+            gef_print(titlify("file {!r}".format(filepath)))
             file_command = GefUtil.which("file")
-            os.system("{:s} {:s}".format(file_command, filepath))
+            os.system("{!r} {!r}".format(file_command, filepath))
         except FileNotFoundError as e:
             warn("{}".format(e))
 
         try:
-            gef_print(titlify("magika {:s}".format(filepath)))
+            gef_print(titlify("magika {!r}".format(filepath)))
             magika_command = GefUtil.which("magika")
-            os.system("{:s} {:s}".format(magika_command, filepath))
+            os.system("{!r} {!r}".format(magika_command, filepath))
         except FileNotFoundError as e:
             warn("{}".format(e))
 
@@ -85333,6 +89248,7 @@ class FiletypeMemoryCommand(GenericCommand):
 @register_command
 class BinwalkMemoryCommand(GenericCommand):
     """Scan memory by binwalk."""
+
     _cmdline_ = "binwalk-memory"
     _category_ = "03-f. Memory - Investigation"
 
@@ -85422,6 +89338,7 @@ class BinwalkMemoryCommand(GenericCommand):
 @register_command
 class BincompareCommand(GenericCommand):
     """Compare an binary file with the memory position looking for badchars."""
+
     _cmdline_ = "bincompare"
     _category_ = "03-d. Memory - Calculation"
 
@@ -85540,6 +89457,7 @@ class BincompareCommand(GenericCommand):
 @register_command
 class SymbolsCommand(GenericCommand):
     """List up all symbols (shortcut for `maintenance print msymbols`) with coloring."""
+
     _cmdline_ = "symbols"
     _category_ = "02-g. Process Information - Symbol"
 
@@ -85584,6 +89502,7 @@ class SymbolsCommand(GenericCommand):
 @register_command
 class TypesCommand(GenericCommand):
     """List up all types (shortcut for `info types`) with compaction."""
+
     _cmdline_ = "types"
     _category_ = "02-h. Process Information - Type"
 
@@ -85654,7 +89573,7 @@ class TypesCommand(GenericCommand):
         tqdm = GefUtil.get_tqdm()
         for type_name in tqdm(out, leave=False):
             if args.verbose:
-                ret = gdb.execute('dt -n "{:s}"'.format(type_name), to_string=True)
+                ret = gdb.execute("dt -n {!r}".format(type_name), to_string=True)
                 if not ret or (" is not struct or union" in ret) or ("Not found " in ret):
                     new_out.append(Instruction.smartify_text(type_name))
                     new_out.append("")
@@ -85674,6 +89593,7 @@ class TypesCommand(GenericCommand):
 @register_command
 class GefCommand(GenericCommand):
     """The base command of GEF maintenance."""
+
     _cmdline_ = "gef"
     _category_ = "99. GEF Maintenance Command"
 
@@ -85781,6 +89701,7 @@ class GefCommand(GenericCommand):
 @register_command
 class GefHelpCommand(GenericCommand):
     """Display GEF command list."""
+
     _cmdline_ = "gef help"
     _category_ = "99. GEF Maintenance Command"
 
@@ -85832,37 +89753,48 @@ class GefHelpCommand(GenericCommand):
 @register_command
 class GefConfigCommand(GenericCommand):
     """Display or change GEF configuration."""
+
     _cmdline_ = "gef config"
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("setting_name", metavar="SETTING_NAME", nargs="?", help="setting name.")
     parser.add_argument("setting_value", metavar="SETTING_VALUE", nargs="?", help="setting value.")
+    parser.add_argument("-s", "--show-only-changes", action="store_true", help="show only changed settings.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete="use_user_complete")
         return
 
-    def print_setting(self, config_name, verbose=False):
+    def print_setting(self, config_name, with_description=False, show_only_changes=False):
         res = Config.__gef_config__.get(config_name)
+        res_orig = Config.__gef_config_orig__.get(config_name)
+        if not res or not res_orig:
+            return
+
         string_color = Config.get_gef_setting("theme.dereference_string")
         misc_color = Config.get_gef_setting("theme.dereference_base_address")
 
-        if not res:
-            return
-
         _value, _type, _desc = res
+        _value_orig, _, _ = res_orig
+
         _setting = Color.colorify(config_name, "green")
         _type = _type.__name__
         if _type == "str":
             _value = '"{:s}"'.format(Color.colorify(_value, string_color))
+            _value_orig = '"{:s}"'.format(Color.colorify(_value_orig, string_color))
         else:
             _value = Color.colorify(_value, misc_color)
+            _value_orig = Color.colorify(_value_orig, misc_color)
 
-        gef_print("{:s} ({:s}) = {:s}".format(_setting, _type, _value))
+        if show_only_changes:
+            if _value != _value_orig:
+                gef_print("{:s} ({:s}) = {:s}   (orig: {:s})".format(_setting, _type, _value, _value_orig))
+        else:
+            gef_print("{:s} ({:s}) = {:s}".format(_setting, _type, _value))
 
-        if verbose:
+        if with_description:
             gef_print(Color.colorify("\nDescription:", "bold underline"))
             gef_print("\t{:s}".format(_desc))
         return
@@ -85884,7 +89816,7 @@ class GefConfigCommand(GenericCommand):
             return
 
         try:
-            if _type == bool:
+            if _type is bool:
                 if config_value.upper() in ("TRUE", "T", "1"):
                     _newval = True
                 else:
@@ -85919,7 +89851,7 @@ class GefConfigCommand(GenericCommand):
         if (args.setting_name, args.setting_value) == (None, None):
             gef_print(titlify("GEF configuration settings"))
             for name in sorted(Config.__gef_config__):
-                self.print_setting(name)
+                self.print_setting(name, show_only_changes=args.show_only_changes)
             return
 
         # show name-matched config(s)
@@ -85927,13 +89859,13 @@ class GefConfigCommand(GenericCommand):
             names = [x for x in Config.__gef_config__.keys() if x.startswith(args.setting_name)]
             if not names:
                 return
-            if len(names) == 1:
+            if len(names) == 1 or (args.setting_name in Config.__gef_config__): # uniquely identified or exact match
                 gef_print(titlify("GEF configuration setting: {:s}".format(names[0])))
-                self.print_setting(names[0], verbose=True)
+                self.print_setting(names[0], with_description=True, show_only_changes=args.show_only_changes)
             else:
                 gef_print(titlify("GEF configuration settings matching '{:s}'".format(args.setting_name)))
                 for name in names:
-                    self.print_setting(name)
+                    self.print_setting(name, show_only_changes=args.show_only_changes)
             return
 
         # set config value
@@ -85944,6 +89876,7 @@ class GefConfigCommand(GenericCommand):
 @register_command
 class GefSaveCommand(GenericCommand):
     """Save the current settings to '~/.gef.rc'."""
+
     _cmdline_ = "gef save"
     _category_ = "99. GEF Maintenance Command"
 
@@ -85992,6 +89925,7 @@ class GefSaveCommand(GenericCommand):
 @register_command
 class GefRestoreCommand(GenericCommand):
     """Load settings from '~/.gef.rc'."""
+
     _cmdline_ = "gef restore"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86032,7 +89966,7 @@ class GefRestoreCommand(GenericCommand):
                 _type = Config.__gef_config__.get(key)[1]
                 new_value = cfg.get(section, optname)
                 try:
-                    if _type == bool:
+                    if _type is bool:
                         if new_value == "True":
                             new_value = True
                         elif new_value == "False":
@@ -86062,6 +89996,7 @@ class GefRestoreCommand(GenericCommand):
 @register_command
 class GefMissingCommand(GenericCommand):
     """Display the GEF commands that could not be loaded with the reason."""
+
     _cmdline_ = "gef missing"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86083,6 +90018,7 @@ class GefMissingCommand(GenericCommand):
 @register_command
 class GefReloadCommand(GenericCommand):
     """Reload the GEF."""
+
     _cmdline_ = "gef reload"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86135,6 +90071,7 @@ class GefReloadCommand(GenericCommand):
 @register_command
 class GefArchListCommand(GenericCommand):
     """Display defined architecture information."""
+
     _cmdline_ = "gef arch-list"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86214,6 +90151,7 @@ class GefArchListCommand(GenericCommand):
 @register_command
 class GefRaiseExceptionCommand(GenericCommand):
     """Raise an exception for development."""
+
     _cmdline_ = "gef raise-exception"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86228,6 +90166,7 @@ class GefRaiseExceptionCommand(GenericCommand):
 @register_command
 class GefPyObjListCommand(GenericCommand):
     """Display defined global python object."""
+
     _cmdline_ = "gef pyobj-list"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86276,48 +90215,48 @@ class GefPyObjListCommand(GenericCommand):
         read_write_mems = []
         others = []
 
-        for mod in dir(sys.modules["__main__"]): # for global object
+        for gobj in dir(sys.modules["__main__"]): # for global object
             # skip specific
-            if mod in skip_name_list:
+            if gobj in skip_name_list:
                 continue
 
-            # skip specific type
-            obj = getattr(sys.modules["__main__"], mod)
-            if type(obj) in skip_type_list:
-                continue
-
+            obj = getattr(sys.modules["__main__"], gobj)
             t = type(obj)
 
+            # skip specific type
+            if t in skip_type_list:
+                continue
+
             # classify
-            if mod.startswith("__") and t != function_type:
-                global_configs.append("{!s} {!s}".format(t, mod))
-            elif mod in ["current_arch"]:
-                global_configs.append("{!s} {!s}".format(t, mod))
-            elif mod.upper() == mod and type(obj) != class_type:
-                global_configs.append("{!s} {!s}".format(t, mod))
-            elif type(obj) == class_type:
-                if mod.endswith("Command"):
-                    command_classes.append("{!s} {!s}".format(t, mod))
-                elif mod.endswith("Breakpoint") or mod.endswith("Watchpoint"):
-                    bp_classes.append("{!s} {!s}".format(t, mod))
+            if gobj.startswith("__") and t is not function_type:
+                global_configs.append("{!s} {!s}".format(t, gobj))
+            elif gobj in ["current_arch"]:
+                global_configs.append("{!s} {!s}".format(t, gobj))
+            elif gobj.upper() == gobj and t is not class_type:
+                global_configs.append("{!s} {!s}".format(t, gobj))
+            elif t is class_type:
+                if gobj.endswith("Command"):
+                    command_classes.append("{!s} {!s}".format(t, gobj))
+                elif gobj.endswith("Breakpoint") or gobj.endswith("Watchpoint"):
+                    bp_classes.append("{!s} {!s}".format(t, gobj))
                 elif obj in arch_list:
-                    arch_classes.append("{!s} {!s}".format(t, mod))
+                    arch_classes.append("{!s} {!s}".format(t, gobj))
                 else:
-                    classes.append("{!s} {!s}".format(t, mod))
+                    classes.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("Architecture determination function"):
-                arch_determinations.append("{!s} {!s}".format(t, mod))
+                arch_determinations.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("GDB mode determination function"):
-                gdb_mode_determinations.append("{!s} {!s}".format(t, mod))
+                gdb_mode_determinations.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("Decorator"):
-                decorators.append("{!s} {!s}".format(t, mod))
-            elif mod.endswith(("syscall_tbl", "syscall_list")) or mod.startswith("syscall_defs"):
-                syscall_defines.append("{!s} {!s}".format(t, mod))
+                decorators.append("{!s} {!s}".format(t, gobj))
+            elif gobj.endswith(("syscall_tbl", "syscall_list")) or gobj.startswith("syscall_defs"):
+                syscall_defines.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("The wrapper of gef_print"):
-                gef_print_wrappers.append("{!s} {!s}".format(t, mod))
-            elif re.match(r"(read|write)_.*(memory|physmem).*", mod):
-                read_write_mems.append("{!s} {!s}".format(t, mod))
+                gef_print_wrappers.append("{!s} {!s}".format(t, gobj))
+            elif re.match(r"(read|write)_.*(memory|physmem).*", gobj):
+                read_write_mems.append("{!s} {!s}".format(t, gobj))
             else:
-                others.append("{!s} {!s}".format(t, mod))
+                others.append("{!s} {!s}".format(t, gobj))
 
         # print
         output = []
@@ -86352,6 +90291,7 @@ class GefPyObjListCommand(GenericCommand):
 @register_command
 class GefAvailableCommandListCommand(GenericCommand):
     """Displays a list of commands available for the current architecture and gdb execution mode."""
+
     _cmdline_ = "gef avail-comm-list"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86427,6 +90367,7 @@ class GefAvailableCommandListCommand(GenericCommand):
         return False
 
     @parse_args
+    @only_if_gdb_running
     def do_invoke(self, args):
         arch_name = self.get_arch_name()
 
@@ -86466,13 +90407,14 @@ class GefAvailableCommandListCommand(GenericCommand):
 @register_command
 class GefSetArchCommand(GenericCommand):
     """Set a specific architecture to gef."""
+
     _cmdline_ = "gef set-arch"
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("arch", metavar="ARCH", nargs="?", help="target architecture.")
-    group.add_argument("-l", "--list", action="store_true", help="show supported architecure words.")
+    group.add_argument("-l", "--list", action="store_true", help="show supported architecture words.")
     _syntax_ = parser.format_help()
 
     def arch_listup(self):
@@ -86507,6 +90449,7 @@ class GefSetArchCommand(GenericCommand):
 
 class GefAlias(gdb.Command):
     """Simple aliasing wrapper because GDB doesn't do what it should."""
+
     _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, alias, command, force_repeat=None, pre_defined=False):
@@ -86551,6 +90494,7 @@ class GefAlias(gdb.Command):
 @register_command
 class AliasesCommand(GenericCommand):
     """The base command to add, remove or list aliases."""
+
     _cmdline_ = "aliases"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86578,6 +90522,7 @@ class AliasesCommand(GenericCommand):
 @register_command
 class AliasesAddCommand(AliasesCommand):
     """Add the command alias."""
+
     _cmdline_ = "aliases add"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86604,6 +90549,7 @@ class AliasesAddCommand(AliasesCommand):
 @register_command
 class AliasesRmCommand(AliasesCommand):
     """Remove the command alias."""
+
     _cmdline_ = "aliases rm"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86629,6 +90575,7 @@ class AliasesRmCommand(AliasesCommand):
 @register_command
 class AliasesListCommand(AliasesCommand):
     """List the command alias."""
+
     _cmdline_ = "aliases ls"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86661,6 +90608,8 @@ class AliasesListCommand(AliasesCommand):
 
 
 class GefUtil:
+    """A collection of utility functions that are related to GEF basic features."""
+
     @staticmethod
     @Cache.cache_until_next
     def cached_lookup_type(_type):
@@ -86687,7 +90636,7 @@ class GefUtil:
         """Defines a new convenience value."""
         var_name = "$_gef{:d}".format(GefUtil.__gef_convenience_vars_index__)
         GefUtil.__gef_convenience_vars_index__ += 1
-        gdb.execute("""set {:s} = "{:s}" """.format(var_name, value))
+        gdb.execute('set {:s} = "{:s}"'.format(var_name, value))
         return var_name
 
     class ArgparseExitProxyException(Exception):
@@ -86785,6 +90734,8 @@ class GefUtil:
 
 
 class Gef:
+    """A collection of utility functions that are related to GEF start up."""
+
     @staticmethod
     def gef_prompt(_current_prompt):
         """GEF custom prompt function."""

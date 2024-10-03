@@ -38,7 +38,7 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * qemu: `qemu-mipsn32{,el}` via apt.
     * gdb: `gdb-multiarch` via apt.
 * sparc32
-    * toolchain: `sparcv8--uclibc--stable-2022.08-2` from https://toolchains.bootlin.com/
+    * toolchain: `sparcv8--uclibc--stable-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-sparc` via apt.
     * gdb: `gdb-multiarch` via apt.
 * sparc32plus
@@ -48,12 +48,12 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * gdb: `gdb-multiarch` via apt.
 * sparc64
     * toolchain: `gcc-sparc64-linux-gnu` via apt.
-    * toolchain (Ubuntu 23.04 or before): `sparc64--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain (Ubuntu 23.04 or before): `sparc64--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the built ELF always SIGSEGV.
     * qemu: `qemu-sparc64` via apt.
     * gdb: `gdb-multiarch` via apt.
 * riscv32
-    * toolchain: `riscv32-ilp32d--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `riscv32-ilp32d--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-riscv32` via apt.
     * gdb: `gdb-multiarch` via apt.
 * riscv64
@@ -66,7 +66,7 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * gdb: `gdb-multiarch` via apt.
 * sh4
     * toolchain: `gcc-sh4-linux-gnu` via apt.
-    * toolchain (Ubuntu 23.04 or before): `sh-sh4--uclibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain (Ubuntu 23.04 or before): `sh-sh4--uclibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since static build is failed.
         * glibc version is broken too. Use uclibc version.
     * qemu: `qemu-sh4` via apt.
@@ -84,20 +84,19 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * qemu: `qemu-hppa` via apt.
     * gdb: `gdb-multiarch` via apt.
 * or1k (OpenRISC 1000)
-    * toolchain: `openrisc--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `openrisc--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-or1k` via apt.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * nios2
-    * toolchain: `nios2--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `nios2--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-nios2` via apt.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * microblaze
-    * toolchain: `microblazebe--glibc--stable-2024.02-1` from https://toolchains.bootlin.com/
-        * bleeding edge version is broken.
+    * toolchain: `microblazebe--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-microblaze` via apt.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * xtensa (lx60)
-    * toolchain: `xtensa-lx60--uclibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `xtensa-lx60--uclibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the C header is unavailable.
     * qemu: `qemu-xtensa` via apt.
     * gdb: `xtensa-lx60--uclibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
@@ -124,18 +123,14 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * arc32 (HS38; ARCv2)
     * toolchain: `gcc-arc-linux-gnu` via apt.
-    * toolchain (Ubuntu 23.04 or before): `arcle-hs38--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain (Ubuntu 23.04 or before): `arcle-hs38--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
-        * `export CXXFLAGS="-Wno-error=enum-int-mismatch"`
-        * `export CFLAGS="-Wno-error=enum-int-mismatch"`
-        * `./configure --target-list=arc-linux-user && make && cp build/qemu-arc /usr/local/bin`
+        * `./configure --target-list=arc-linux-user --disable-werror && make && cp build/qemu-arc /usr/local/bin`
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * arc32 (HS58; ARCv3)
     * toolchain: [arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2)
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
-        * `export CXXFLAGS="-Wno-error=enum-int-mismatch"`
-        * `export CFLAGS="-Wno-error=enum-int-mismatch"`
-        * `./configure --target-list=arc-linux-user && make && cp build/qemu-arc /usr/local/bin`
+        * `./configure --target-list=arc-linux-user --disable-werror && make && cp build/qemu-arc /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc -cpu hs5x -g 1234 ./a.out`.
     * gdb: https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb
         * `git switch arc64`
@@ -143,9 +138,7 @@ I also list the tools I used in my Ubuntu 24.04 environment.
 * arc64 (HS68; ARCv3)
     * toolchain: [arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2)
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
-        * `export CXXFLAGS="-Wno-error=enum-int-mismatch"`
-        * `export CFLAGS="-Wno-error=enum-int-mismatch"`
-        * `./configure --target-list=arc64-linux-user && make && cp build/qemu-arc64 /usr/local/bin`
+        * `./configure --target-list=arc64-linux-user --disable-werror && make && cp build/qemu-arc64 /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc64 -cpu hs6x -g 1234 ./a.out`.
     * gdb: https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb
         * `git switch arc64`
@@ -155,10 +148,10 @@ I also list the tools I used in my Ubuntu 24.04 environment.
         * `apt -y install autoconf automake autotools-dev curl python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat-dev`
         * `git submodule update --init && ./build-csky-gcc.py csky-gcc --src ./ --triple csky-unknown-linux-gnu --disable-gdb`
     * qemu: https://github.com/XUANTIE-RV/qemu
-        * `export CXXFLAGS="-Wno-error"`
-        * `export CFLAGS="-Wno-error"`
-        * `git switch xuantie-qemu-6.1.0`
-        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user --disable-bpf && make && cp build/qemu-cskyv{1,2}{,eb} /usr/local/bin`
+        * `sed -i -e '/assert(min <= max);/d' accel/tcg/user-exec.c`
+            * You will get an assertion error, so remove it.
+            * Or, you can revert to a slightly older version: `git switch xuantie-qemu-6.1.0`
+        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user --disable-{bpf,werror} && make && cp build/qemu-cskyv{1,2}{,eb} /usr/local/bin`
         * It needs `-cpu` option like `qemu-cskyv2 -cpu ck810 -g 1234 ./a.out`.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 
@@ -195,9 +188,7 @@ If you find it, please let me know in the issue page.
 * loongarch32
     * [x] toolchain: [loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0.tar.xz](https://gitee.com/loongson-edu/la32r-toolchains/releases/download/v0.0.3/loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0.tar.xz)
     * [ ] qemu: https://gitee.com/loongson-edu/la32r-QEMU
-        * `export CXXFLAGS="-Wno-error"`
-        * `export CFLAGS="-Wno-error"`
-        * `./configure --target-list=loongarch32-linux-user && make && cp build/qemu-loongarch32 /usr/local/bin`
+        * `./configure --target-list=loongarch32-linux-user --disable-werror && make && cp build/qemu-loongarch32 /usr/local/bin`
         * It says `Architecture rejected` when connecting from gdb.
     * [x] gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * e2k

@@ -20,10 +20,9 @@
 * [FAQ](#faq)
 
 ## What is this?
-This is a fork of [GEF](https://github.com/hugsy/gef).
-However, there are 3 major improvements.
+This is a fork of [GEF](https://github.com/hugsy/gef) with 3 major improvements.
 
-1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.9.x).
+1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.11.x).
 2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
 3. Added some heap dump commands for various allocators.
 
@@ -33,13 +32,17 @@ Many other commands have been added and improved. Enjoy!
 
 ### Supported environment
 - Tested on ubuntu 24.04.
-- It may work under ubuntu 20.04 - 23.10, debian 10.x or after.
+- It may work on ubuntu 22.04 - 23.10.
+- It might work on ubuntu 20.04 - 21.10, but not recommended.
 
 ### Install
 ```bash
 # Ubuntu 23.04 or later restrict global installation of python packages with pip3.
 # So you need --break-system-packages option.
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/pip3 install/pip3 install --break-system-packages/g' | sh
+
+# Ubuntu 22.10 or before
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 ```
 
 * Note
@@ -68,7 +71,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 ### Supported mode
 * Normal debugging
 * Attach to the process
-* Attach to the process in another pid namespace (e.g. attaching from outside of `docker`)
+* Attach to the process in another namespace (e.g. attaching from outside of `docker`)
 * Connect to `gdbserver`
 * Connect to the gdb stub of `qemu-system`
 * Connect to the gdb stub of `qemu-user`
@@ -141,7 +144,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `kcurrent`: displays current task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
-    * Supported kernel versions: 3.x to 6.9.x.
+    * Supported kernel versions: 3.x to 6.11.x.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`/`vmlinux-to-elf-apply`: applies kallsyms information obtained by `ksymaddr-remote` or `vmlinux-to-elf` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
@@ -204,10 +207,16 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-sighands.png)
     * It also displays the namespaces of the userland process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-namespaces.png)
+    * It also displays the seccomp-filter.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-seccomp.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
     * It also displays each module symbols.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod-syms.png)
+* `kload`: loads vmlinux without loaded address.
+    * It is useful if you have a vmlinux with debuginfo at hand.
+* `kmod-load`: loads the kernel module without loaded address.
+    * It is useful if you have a kernel module with debuginfo at hand.
 * `kops`: displays each operations member.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
 * `kcdev`: displays each character device information.
@@ -264,25 +273,30 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 
 ### Heap dump features
 * Glibc heap commands are improved.
-    * It changes the color.
+    * It changes the color and print symbol if exists.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
     * They print bins information if the chunk is in free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
+    * It supports new modes `heap arenas`, `heap top` and `heap bins-simple`.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-arenas.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-top.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins-simple.png)
     * Thread arena is supported for all `heap` commands.
         * Use `-a` option.
-    * It supports new modes `heap arenas` and `heap top`.
     * `find-fake-fast`: searches for a memory with a size-like value that can be linked to the fastbin free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/find-fake-fast.png)
     * `visual-heap`: is colorized heap viewer.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/visual-heap.png)
     * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
+    * `calc-protected-fd`: calculates a valid value as protected fd.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/calc-protected-fd.png)
 * uClibc heap commands are added.
     * `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
         * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
         * How to test (x64):
-            * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
+            * Download and extract `x86-64--uclibc--stable-2024.05-1.tar.bz2` from https://toolchains.bootlin.com/
             * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then build as `x86_64-linux-gcc test.c`.
             * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
     * `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
@@ -290,8 +304,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `partition-alloc-dump`: dumps partition-alloc free-list for chromium.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest version of chromium.
-        * Currently tested: v128.x / 1319627 / f2ab309f349c1b4b833b363194c6089323cdcfc0
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1319627/
+        * Currently tested: v130.x / 1347522 / eb5bf4dd15f4ae83ebe030375ef5e642ec879323
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1347522/
     * Supported on only x64/ARM64 (maybe it works on x86/ARM too, but not tested).
     * It will try heuristic search if binary has no symbol.
     * How to test:
@@ -442,7 +456,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 ### Added features
 * `pid`/`tid`: prints pid and tid.
 * `filename`: prints filename.
-* `fds`: shows opensed file descriptors.
+* `fds`: shows opened file descriptors.
 * `auxv`: pretty prints ELF auxiliary vector.
     * Supported also under qemu-user.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)
@@ -473,6 +487,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/command-break.png)
 * `main-break`: sets a breakpoint at `main` with or without symbols, then continue.
     * This is useful when you just want to run to `main` under using qemu-user or pin, or debugging no-symbol ELF.
+* `regdump-break`: sets a breakpoint which dumps specified registers if hit.
 * `break-if-taken`/`break-if-not-taken`: sets a breakpoint which breaks if branch is taken (or not taken).
 * `distance`: calculates the offset from its base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/distance.png)
@@ -524,6 +539,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `memswap`: swaps the contents of the address A and B, whether virtual or physical.
 * `meminsert`: inserts the contents of the address A to B, whether virtual or physical.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/meminsert.png)
+* `strlen`: detects the length of the string.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/strlen.png)
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
 * `seq-length`: detects consecutive length of the same sequence.
@@ -645,6 +662,12 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/binwalk-memory.png)
 * `filetype-memory`: scans memory by `file` and `magika`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/filetype-memory.png)
+* `stdio-dump`: dumps members of stdin/stdout/stderr.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/stdio-dump.png)
+* `peek-pageframe`: reads page frame data.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/peek-pageframe.png)
+* `peek-pageflags`: reads page flags of a page frame.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/peek-pageflags.png)
 
 ### Other
 * The category is introduced in `gef help`.
@@ -653,7 +676,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.10.0-rc3 for each architecture.
+    * It was updated up to linux kernel 6.11.0 for each architecture.
 * Removed some features I don't use.
     * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.
