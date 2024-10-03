@@ -5,13 +5,23 @@ if [ ! $(id -u) = 0 ]; then
     echo "[-] INSTALLATION FAILED"
     exit 1
 fi
-
-echo "[+] apt"
-apt-get update
-apt-get install -y gdb-multiarch binutils python3-pip ruby-dev git
+PIP_OPTION=""
+if grep -q "Arch Linux" /etc/os-release; then
+	echo "[+] pacman"
+	pacman -Syu
+	pacman -S gdb binutils python-pip ruby git
+	PIP_OPTION="--break-system-packages"
+elif grep -q "Ubuntu" /etc/os-release; then
+	echo "[+] apt"
+	apt-get update
+	apt-get install -y gdb-multiarch binutils python3-pip ruby-dev git
+else
+	echo "[+] Unsupported System"
+	exit 1
+fi
 
 echo "[+] pip3"
-pip3 install crccheck unicorn capstone ropper keystone-engine tqdm magika
+pip3 install crccheck unicorn capstone ropper keystone-engine tqdm magika $PIP_OPTION
 
 echo "[+] install seccomp-tools, one_gadget"
 if [ "x$(which seccomp-tools)" = "x" ]; then
@@ -34,8 +44,8 @@ fi
 
 echo "[+] install vmlinux-to-elf"
 if [ "x$(which vmlinux-to-elf)" = "x" ] && [ ! -e /usr/local/bin/vmlinux-to-elf ]; then
-    pip3 install --upgrade lz4 zstandard git+https://github.com/clubby789/python-lzo@b4e39df
-    pip3 install --upgrade git+https://github.com/marin-m/vmlinux-to-elf
+    pip3 install --upgrade lz4 zstandard git+https://github.com/clubby789/python-lzo@b4e39df $PIP_OPTION
+    pip3 install --upgrade git+https://github.com/marin-m/vmlinux-to-elf $PIP_OPTION
 fi
 
 echo "[+] download gef"
